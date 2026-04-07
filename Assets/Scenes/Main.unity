@@ -1404,7 +1404,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 10, y: -220}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &871808622
@@ -1930,6 +1930,7 @@ GameObject:
   - component: {fileID: 1348271829}
   - component: {fileID: 1348271828}
   - component: {fileID: 1348271827}
+  - component: {fileID: 1348271830}
   m_Layer: 5
   m_Name: Canvas
   m_TagString: Untagged
@@ -2032,6 +2033,24 @@ Canvas:
   m_SortingLayerID: 0
   m_SortingOrder: 0
   m_TargetDisplay: 0
+--- !u!114 &1348271830
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1348271825}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 360e40ae6cbb7864caa253560a3f3472, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HUDUI
+  coinsText: {fileID: 101223093}
+  hungerText: {fileID: 871808623}
+  statusText: {fileID: 1788271823}
+  foodText: {fileID: 264219808}
+  xpText: {fileID: 0}
+  levelText: {fileID: 0}
 --- !u!1 &1353224092
 GameObject:
   m_ObjectHideFlags: 0
@@ -2871,27 +2890,25 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7e28257a739c9bc44b48c1daf3816539, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
-  hunger: 50
-  coins: 0
-  food: 0
-  hungerDrainRate: 5
-  focusDuration: 10
-  hungerText: {fileID: 871808623}
-  coinsText: {fileID: 101223093}
+  balanceConfig: {fileID: 11400000, guid: fbf56dfac9cadba4abba394df2d0c67e, type: 2}
+  petData:
+    hunger: 100
+    isDead: 0
+    statusText: Happy
+  currencyData:
+    coins: 0
+  inventoryData:
+    food: 0
+  progressionData:
+    level: 1
+    xp: 0
   workButton: {fileID: 445146680}
   feedButton: {fileID: 1724937169}
   buyButton: {fileID: 1515811581}
   focusButton: {fileID: 781867072}
-  statusText: {fileID: 1788271823}
   focusTimerText: {fileID: 1508533002}
   workButtonText: {fileID: 190251807}
   focusButtonText: {fileID: 948902963}
-  xp: 0
-  level: 1
-  xpToNextLevel: 10
-  xpText: {fileID: 1010905436}
-  levelText: {fileID: 528560205}
-  foodText: {fileID: 264219808}
 --- !u!4 &1984221022
 Transform:
   m_ObjectHideFlags: 0

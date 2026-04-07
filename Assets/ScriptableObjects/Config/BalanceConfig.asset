@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f5feecbc180f06840af4d629f9f0ae48, type: 3}
+  m_Name: BalanceConfig
+  m_EditorClassIdentifier: Assembly-CSharp::BalanceConfig
+  startingHunger: 50
+  hungerDrainPerSecond: 5
+  feedAmount: 10
+  startingCoins: 0
+  foodPrice: 10
+  baseWorkReward: 3
+  baseFocusReward: 10
+  baseFocusDuration: 10
+  startingLevel: 1
+  startingXp: 0
+  xpToNextLevel: 10
+  workXpGain: 1
+  focusXpGain: 5
+  buyXpGain: 3
+  feedXpGain: 2
+  buyUnlockLevel: 2
