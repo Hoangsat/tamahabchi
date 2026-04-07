@@ -31,24 +31,24 @@ public class HUDUI : MonoBehaviour
 
     void UpdateCoins()
     {
-        coinsText.text = "Coins: " + gameManager.currencyData.coins;
+        if (coinsText != null) coinsText.text = "Coins: " + gameManager.currencyData.coins;
     }
 
     void UpdatePet()
     {
-        hungerText.text = "Hunger: " + gameManager.petData.hunger;
-        statusText.text = gameManager.petData.statusText;
+        if (hungerText != null) hungerText.text = "Hunger: " + gameManager.petData.hunger;
+        if (statusText != null) statusText.text = gameManager.petData.statusText;
     }
 
     void UpdateInventory()
     {
-        foodText.text = "Food: " + gameManager.inventoryData.food;
+        if (foodText != null) foodText.text = "Food: " + gameManager.inventoryData.food;
     }
 
     void UpdateProgression()
     {
-        levelText.text = "Level: " + gameManager.progressionData.level;
-        xpText.text = "XP: " + gameManager.progressionData.xp + " / 10";
+        if (levelText != null) levelText.text = "Level: " + gameManager.progressionData.level;
+        if (xpText != null) xpText.text = "XP: " + gameManager.progressionData.xp + " / 10";
     }
 
     void OnDestroy()

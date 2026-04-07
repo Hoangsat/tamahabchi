@@ -30,4 +30,14 @@ public class BalanceConfig : ScriptableObject
 
     [Header("Unlocks")]
     public int buyUnlockLevel = 2;
+
+    [Header("Room Upgrades")]
+    public int roomUpgrade1Cost = 25;
+    public int roomUpgrade2Cost = 50;
+
+    public int roomUpgrade1UnlockLevel = 2;
+    public int roomUpgrade2UnlockLevel = 4;
+
+    [Header("Daily Reward")]
+    public int dailyRewardCoins = 20;
 }
