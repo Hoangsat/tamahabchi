@@ -13,13 +13,36 @@ MonoBehaviour:
   m_Name: BalanceConfig
   m_EditorClassIdentifier: Assembly-CSharp::BalanceConfig
   startingHunger: 50
-  hungerDrainPerSecond: 5
+  startingMood: 70
+  startingEnergy: 100
+  hungerDrainPerSecond: 1
+  lowHungerMoodThreshold: 30
+  lowEnergyMoodThreshold: 20
+  moodDecayPerSecondWhenHungry: 0.01
+  moodDecayPerSecondWhenTired: 0.015
+  feedMoodBonus: 5
+  roomUpgradeMoodBonus: 8
   feedAmount: 10
+  snackRestore: 15
+  mealRestore: 40
+  premiumRestore: 80
   startingCoins: 0
   foodPrice: 10
+  snackPrice: 5
+  mealPrice: 20
+  premiumPrice: 50
   baseWorkReward: 3
   baseFocusReward: 10
   baseFocusDuration: 10
+  focusEnergyCostPerMinute: 1
+  lowEnergyThreshold: 20
+  lowEnergyRewardMultiplier: 0.8
+  skillProgressPerMinute: 0.2
+  skillMinutesPerStep: 5
+  skillLevelMultiplierStep: 0.02
+  skillMoodBaseBonus: 0.5
+  skillMoodScale: 0.01
+  goldenSkillFocusXpBonus: 0.05
   startingLevel: 1
   startingXp: 0
   xpToNextLevel: 10
@@ -28,3 +51,12 @@ MonoBehaviour:
   buyXpGain: 3
   feedXpGain: 2
   buyUnlockLevel: 2
+  roomUpgrade1Cost: 25
+  roomUpgrade2Cost: 50
+  roomUpgrade3Cost: 150
+  roomUpgrade1UnlockLevel: 2
+  roomUpgrade2UnlockLevel: 4
+  roomUpgrade3UnlockLevel: 7
+  reviveCost: 50
+  dailyRewardCoins: 20
+  offlineHungerCapHours: 8

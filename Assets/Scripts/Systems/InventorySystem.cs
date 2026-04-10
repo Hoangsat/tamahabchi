@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 public class InventorySystem
 {
     private InventoryData inventoryData;
@@ -7,28 +9,46 @@ public class InventorySystem
         this.inventoryData = inventoryData;
     }
 
-    public int GetFood()
+    private InventoryEntry GetEntry(string itemId)
     {
-        return inventoryData.food;
+        if (inventoryData.items == null)
+            inventoryData.items = new List<InventoryEntry>();
+            
+        return inventoryData.items.Find(e => e.itemId == itemId);
     }
 
-    public void AddFood(int amount)
+    public int GetItemCount(string itemId)
+    {
+        var entry = GetEntry(itemId);
+        return entry != null ? entry.count : 0;
+    }
+
+    public void AddItem(string itemId, int amount = 1)
     {
         if (amount <= 0) return;
-        inventoryData.food += amount;
+        var entry = GetEntry(itemId);
+        if (entry != null)
+        {
+            entry.count += amount;
+        }
+        else
+        {
+            inventoryData.items.Add(new InventoryEntry { itemId = itemId, count = amount });
+        }
     }
 
-    public bool HasFood(int amount = 1)
+    public bool HasItem(string itemId, int amount = 1)
     {
-        return inventoryData.food >= amount;
+        return GetItemCount(itemId) >= amount;
     }
 
-    public bool ConsumeFood(int amount = 1)
+    public bool ConsumeItem(string itemId, int amount = 1)
     {
         if (amount <= 0) return false;
-        if (inventoryData.food < amount) return false;
+        var entry = GetEntry(itemId);
+        if (entry == null || entry.count < amount) return false;
 
-        inventoryData.food -= amount;
+        entry.count -= amount;
         return true;
     }
 }

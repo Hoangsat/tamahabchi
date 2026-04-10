@@ -9,14 +9,14 @@ public class ShopSystem
         this.inventorySystem = inventorySystem;
     }
 
-    public bool BuyFood(int price, int amount = 1)
+    public bool BuyItem(string itemId, int price, int amount = 1)
     {
-        if (amount <= 0) return false;
+        if (amount <= 0 || string.IsNullOrEmpty(itemId)) return false;
 
         if (!currencySystem.SpendCoins(price))
             return false;
 
-        inventorySystem.AddFood(amount);
+        inventorySystem.AddItem(itemId, amount);
         return true;
     }
 }
