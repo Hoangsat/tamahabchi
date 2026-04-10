@@ -11,6 +11,8 @@ public class InventoryEntry
 public class InventoryData
 {
     public List<InventoryEntry> items = new List<InventoryEntry>();
+    public List<string> ownedSkins = new List<string>();
+    public string equippedSkin = "default";
 
     // Legacy fields for backward compatibility
     public int food = 0;

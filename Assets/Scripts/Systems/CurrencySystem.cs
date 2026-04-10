@@ -14,6 +14,11 @@ public class CurrencySystem
         currencyData.coins += amount;
     }
 
+    public int GetCoins()
+    {
+        return currencyData != null ? currencyData.coins : 0;
+    }
+
     public bool SpendCoins(int amount)
     {
         if (currencyData.coins < amount)

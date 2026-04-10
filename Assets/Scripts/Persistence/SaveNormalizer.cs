@@ -69,10 +69,12 @@ public static class SaveNormalizer
     private static void NormalizeInventory(InventoryData inventoryData)
     {
         inventoryData.items ??= new List<InventoryEntry>();
+        inventoryData.ownedSkins ??= new List<string>();
         inventoryData.food = Mathf.Max(0, inventoryData.food);
         inventoryData.snack = Mathf.Max(0, inventoryData.snack);
         inventoryData.meal = Mathf.Max(0, inventoryData.meal);
         inventoryData.premium = Mathf.Max(0, inventoryData.premium);
+        inventoryData.equippedSkin = string.IsNullOrWhiteSpace(inventoryData.equippedSkin) ? "default" : inventoryData.equippedSkin.Trim();
 
         for (int i = inventoryData.items.Count - 1; i >= 0; i--)
         {
@@ -89,6 +91,23 @@ public static class SaveNormalizer
             {
                 inventoryData.items.RemoveAt(i);
             }
+        }
+
+        for (int i = inventoryData.ownedSkins.Count - 1; i >= 0; i--)
+        {
+            string skinId = inventoryData.ownedSkins[i];
+            if (string.IsNullOrWhiteSpace(skinId))
+            {
+                inventoryData.ownedSkins.RemoveAt(i);
+                continue;
+            }
+
+            inventoryData.ownedSkins[i] = skinId.Trim();
+        }
+
+        if (!inventoryData.ownedSkins.Contains("default"))
+        {
+            inventoryData.ownedSkins.Insert(0, "default");
         }
 
         MigrateLegacyInventoryCounter(inventoryData, "food_basic", inventoryData.food, value => inventoryData.food = value);

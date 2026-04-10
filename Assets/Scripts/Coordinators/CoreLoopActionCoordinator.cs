@@ -13,7 +13,6 @@ public sealed class CoreLoopActionCoordinatorCallbacks
     public Action SaveGame;
     public Action<int, bool> AddXp;
     public Action<string> ShowFeedback;
-    public Action<RoomData> ApplyRoomVisuals;
     public Action<MissionClaimResult, bool> ApplyMissionRewards;
 }
 
@@ -66,12 +65,13 @@ public sealed class CoreLoopActionCoordinator
         this.callbacks = callbacks ?? new CoreLoopActionCoordinatorCallbacks();
     }
 
-    public void TryFeedItem(string itemId, float amount)
+    public ShopPurchaseResult TryFeedItem(string itemId, float amount)
     {
         if (petData == null || petData.isDead)
         {
-            callbacks.ShowFeedback?.Invoke("Pet is dead");
-            return;
+            const string deadMessage = "Pet is dead";
+            callbacks.ShowFeedback?.Invoke(deadMessage);
+            return ShopPurchaseResult.Fail(deadMessage);
         }
 
         string itemName = FormatItemName(itemId);
@@ -93,30 +93,36 @@ public sealed class CoreLoopActionCoordinator
                 callbacks.UpdateOnboardingUi?.Invoke();
             }
 
-            callbacks.ShowFeedback?.Invoke($"Fed {itemName}");
+            string successMessage = $"Fed {itemName}";
+            callbacks.ShowFeedback?.Invoke(successMessage);
             callbacks.SaveGame?.Invoke();
-        }
-        else
-        {
-            callbacks.ShowFeedback?.Invoke($"No {itemName}");
+            callbacks.UpdateUi?.Invoke();
+            callbacks.ShowMissionRefresh?.Invoke();
+            return ShopPurchaseResult.Success(successMessage);
         }
 
+        string failureMessage = $"No {itemName}";
+        callbacks.ShowFeedback?.Invoke(failureMessage);
         callbacks.UpdateUi?.Invoke();
         callbacks.ShowMissionRefresh?.Invoke();
+        return ShopPurchaseResult.Fail(failureMessage);
     }
 
-    public void TryBuyItem(string itemId, int price)
+    public ShopPurchaseResult TryBuyItem(string itemId, int price)
     {
         if (petData == null || petData.isDead)
         {
-            callbacks.ShowFeedback?.Invoke("Pet is dead");
-            return;
+            const string deadMessage = "Pet is dead";
+            callbacks.ShowFeedback?.Invoke(deadMessage);
+            return ShopPurchaseResult.Fail(deadMessage);
         }
 
         if (progressionSystem == null || !progressionSystem.IsBuyUnlocked())
         {
-            callbacks.ShowFeedback?.Invoke($"Unlocks at level {balanceConfig.buyUnlockLevel}");
-            return;
+            string unlockMessage = $"Unlocks at level {balanceConfig.buyUnlockLevel}";
+            callbacks.ShowFeedback?.Invoke(unlockMessage);
+            callbacks.UpdateUi?.Invoke();
+            return ShopPurchaseResult.Fail(unlockMessage);
         }
 
         string itemName = FormatItemName(itemId);
@@ -133,15 +139,101 @@ public sealed class CoreLoopActionCoordinator
                 callbacks.UpdateOnboardingUi?.Invoke();
             }
 
-            callbacks.ShowFeedback?.Invoke($"Bought {itemName}");
+            string successMessage = $"Bought {itemName}";
+            callbacks.ShowFeedback?.Invoke(successMessage);
             callbacks.SaveGame?.Invoke();
-        }
-        else
-        {
-            callbacks.ShowFeedback?.Invoke("Not enough coins");
+            callbacks.UpdateUi?.Invoke();
+            return ShopPurchaseResult.Success(successMessage);
         }
 
+        const string failureMessage = "Not enough coins";
+        callbacks.ShowFeedback?.Invoke(failureMessage);
         callbacks.UpdateUi?.Invoke();
+        return ShopPurchaseResult.Fail(failureMessage);
+    }
+
+    public ShopPurchaseResult TryBuySkin(string itemId, int price)
+    {
+        if (petData == null || petData.isDead)
+        {
+            const string deadMessage = "Pet is dead";
+            callbacks.ShowFeedback?.Invoke(deadMessage);
+            return ShopPurchaseResult.Fail(deadMessage);
+        }
+
+        if (progressionSystem == null || !progressionSystem.IsBuyUnlocked())
+        {
+            string unlockMessage = $"Unlocks at level {balanceConfig.buyUnlockLevel}";
+            callbacks.ShowFeedback?.Invoke(unlockMessage);
+            callbacks.UpdateUi?.Invoke();
+            return ShopPurchaseResult.Fail(unlockMessage);
+        }
+
+        string itemName = FormatItemName(itemId);
+        if (shopSystem != null && shopSystem.BuySkin(itemId, price))
+        {
+            callbacks.OnCoinsChanged?.Invoke();
+            callbacks.OnInventoryChanged?.Invoke();
+            callbacks.AddXp?.Invoke(balanceConfig.buyXpGain, true);
+            string successMessage = $"Bought {itemName}";
+            callbacks.ShowFeedback?.Invoke(successMessage);
+            callbacks.SaveGame?.Invoke();
+            callbacks.UpdateUi?.Invoke();
+            return ShopPurchaseResult.Success(successMessage);
+        }
+
+        const string failureMessage = "Already owned or not enough coins";
+        callbacks.ShowFeedback?.Invoke(failureMessage);
+        callbacks.UpdateUi?.Invoke();
+        return ShopPurchaseResult.Fail(failureMessage);
+    }
+
+    public ShopPurchaseResult TryUseConsumableItem(string itemId, float amount, ShopCategory category)
+    {
+        if (petData == null || petData.isDead)
+        {
+            const string deadMessage = "Pet is dead";
+            callbacks.ShowFeedback?.Invoke(deadMessage);
+            return ShopPurchaseResult.Fail(deadMessage);
+        }
+
+        if (category == ShopCategory.Food)
+        {
+            return TryFeedItem(itemId, amount);
+        }
+
+        string itemName = FormatItemName(itemId);
+        if (inventorySystem == null || !inventorySystem.ConsumeItem(itemId, 1))
+        {
+            string noStockMessage = $"No {itemName}";
+            callbacks.ShowFeedback?.Invoke(noStockMessage);
+            callbacks.UpdateUi?.Invoke();
+            return ShopPurchaseResult.Fail(noStockMessage);
+        }
+
+        switch (category)
+        {
+            case ShopCategory.Energy:
+                petSystem?.AddEnergy(amount);
+                break;
+            case ShopCategory.Mood:
+                petSystem?.AddMood(amount);
+                break;
+            default:
+                const string unsupportedMessage = "Item cannot be used";
+                callbacks.ShowFeedback?.Invoke(unsupportedMessage);
+                callbacks.UpdateUi?.Invoke();
+                return ShopPurchaseResult.Fail(unsupportedMessage);
+        }
+
+        callbacks.OnInventoryChanged?.Invoke();
+        callbacks.OnPetChanged?.Invoke();
+        callbacks.UpdateUi?.Invoke();
+        callbacks.SaveGame?.Invoke();
+
+        string successMessage = $"Used {itemName}";
+        callbacks.ShowFeedback?.Invoke(successMessage);
+        return ShopPurchaseResult.Success(successMessage);
     }
 
     public void TryWork()
@@ -172,63 +264,40 @@ public sealed class CoreLoopActionCoordinator
         callbacks.ShowMissionRefresh?.Invoke();
     }
 
-    public void TryUpgradeRoom()
+    public ShopPurchaseResult TryUpgradeRoom()
     {
-        if (petData == null || petData.isDead)
+        string blockedReason = GetRoomUpgradeBlockedReason();
+        if (!string.IsNullOrEmpty(blockedReason))
         {
-            callbacks.ShowFeedback?.Invoke("Pet is dead");
-            return;
-        }
-
-        if (roomData != null && roomData.roomLevel >= maxSupportedRoomLevel)
-        {
-            callbacks.ShowFeedback?.Invoke("Room is max level");
-            return;
-        }
-
-        if (progressionData != null && progressionData.level < GetCurrentRoomUnlockLevel())
-        {
-            callbacks.ShowFeedback?.Invoke($"Unlocks at level {GetCurrentRoomUnlockLevel()}");
-            return;
+            callbacks.ShowFeedback?.Invoke(blockedReason);
+            callbacks.UpdateUi?.Invoke();
+            return ShopPurchaseResult.Fail(blockedReason);
         }
 
         int cost = GetCurrentRoomUpgradeCost();
-        if (currencyData == null || currencyData.coins < cost)
+        if (currencySystem == null || !currencySystem.SpendCoins(cost))
         {
-            callbacks.ShowFeedback?.Invoke("Not enough coins");
-            return;
+            const string spendFailureMessage = "Need more coins";
+            callbacks.ShowFeedback?.Invoke(spendFailureMessage);
+            callbacks.UpdateUi?.Invoke();
+            return ShopPurchaseResult.Fail(spendFailureMessage);
         }
 
-        if (currencySystem != null && currencySystem.SpendCoins(cost))
-        {
-            roomData.roomLevel++;
-            petSystem?.AddMood(balanceConfig.roomUpgradeMoodBonus);
-            callbacks.ApplyRoomVisuals?.Invoke(roomData);
-            callbacks.OnCoinsChanged?.Invoke();
-            callbacks.OnPetChanged?.Invoke();
-            callbacks.SaveGame?.Invoke();
-            callbacks.ShowFeedback?.Invoke($"Room level {roomData.roomLevel}");
-        }
+        roomData.roomLevel++;
+        petSystem?.AddMood(balanceConfig.roomUpgradeMoodBonus);
+        callbacks.OnCoinsChanged?.Invoke();
+        callbacks.OnPetChanged?.Invoke();
+        callbacks.UpdateUi?.Invoke();
+        callbacks.SaveGame?.Invoke();
+
+        string successMessage = $"Room upgraded to level {roomData.roomLevel}";
+        callbacks.ShowFeedback?.Invoke(successMessage);
+        return ShopPurchaseResult.Success(successMessage);
     }
 
     public bool CanUpgradeRoom()
     {
-        if (roomData == null || progressionData == null || currencyData == null)
-        {
-            return false;
-        }
-
-        if (roomData.roomLevel >= maxSupportedRoomLevel)
-        {
-            return false;
-        }
-
-        if (progressionData.level < GetCurrentRoomUnlockLevel())
-        {
-            return false;
-        }
-
-        return currencyData.coins >= GetCurrentRoomUpgradeCost();
+        return string.IsNullOrEmpty(GetRoomUpgradeBlockedReason());
     }
 
     public int GetCurrentWorkReward()
@@ -249,7 +318,7 @@ public sealed class CoreLoopActionCoordinator
         return 999;
     }
 
-    private int GetCurrentRoomUpgradeCost()
+    public int GetCurrentRoomUpgradeCost()
     {
         if (roomData == null)
         {
@@ -262,6 +331,38 @@ public sealed class CoreLoopActionCoordinator
         return 0;
     }
 
+    public string GetRoomUpgradeBlockedReason()
+    {
+        if (petData == null || petData.isDead)
+        {
+            return "Pet is dead";
+        }
+
+        if (roomData == null)
+        {
+            return "Room unavailable";
+        }
+
+        if (roomData.roomLevel >= maxSupportedRoomLevel)
+        {
+            return "Room is max level";
+        }
+
+        int unlockLevel = GetCurrentRoomUnlockLevel();
+        if (progressionData == null || progressionData.level < unlockLevel)
+        {
+            return $"Unlock at level {unlockLevel}";
+        }
+
+        int cost = GetCurrentRoomUpgradeCost();
+        if (currencyData == null || currencyData.coins < cost)
+        {
+            return $"Need {cost} coins";
+        }
+
+        return string.Empty;
+    }
+
     private string FormatItemName(string itemId)
     {
         if (string.IsNullOrEmpty(itemId))
@@ -269,7 +370,38 @@ public sealed class CoreLoopActionCoordinator
             return string.Empty;
         }
 
-        string name = itemId.Replace("food_", string.Empty);
-        return name.Length > 0 ? char.ToUpper(name[0]) + name.Substring(1) : string.Empty;
+        string[] parts = itemId.Split(new[] { '_' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            return itemId;
+        }
+
+        int startIndex = 0;
+        if (parts.Length > 1 && (parts[0] == "food" || parts[0] == "skin"))
+        {
+            startIndex = 1;
+        }
+        System.Text.StringBuilder builder = new System.Text.StringBuilder();
+        for (int i = startIndex; i < parts.Length; i++)
+        {
+            string part = parts[i];
+            if (string.IsNullOrEmpty(part))
+            {
+                continue;
+            }
+
+            if (builder.Length > 0)
+            {
+                builder.Append(' ');
+            }
+
+            builder.Append(char.ToUpper(part[0]));
+            if (part.Length > 1)
+            {
+                builder.Append(part.Substring(1));
+            }
+        }
+
+        return builder.Length > 0 ? builder.ToString() : itemId;
     }
 }

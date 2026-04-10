@@ -50,12 +50,40 @@ public class SkillsSystem
         return true;
     }
 
+    public bool HasSkillName(string name, string excludedSkillId = "")
+    {
+        EnsureData();
+
+        string normalizedName = NormalizeName(name);
+        if (string.IsNullOrEmpty(normalizedName))
+        {
+            return false;
+        }
+
+        string excludedId = NormalizeId(excludedSkillId);
+        for (int i = 0; i < skillsData.skills.Count; i++)
+        {
+            SkillEntry skill = skillsData.skills[i];
+            if (skill == null || skill.id == excludedId)
+            {
+                continue;
+            }
+
+            if (string.Equals(NormalizeName(skill.name), normalizedName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public SkillEntry AddSkill(string name, string icon)
     {
         EnsureData();
 
         string normalizedName = NormalizeName(name);
-        if (string.IsNullOrEmpty(normalizedName) || !CanAddSkill())
+        if (string.IsNullOrEmpty(normalizedName) || !CanAddSkill() || HasSkillName(normalizedName))
         {
             return null;
         }

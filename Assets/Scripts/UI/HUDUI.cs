@@ -35,36 +35,38 @@ public class HUDUI : MonoBehaviour
     private AppShellUI appShellUI;
     private SkillsPanelUI skillsPanelUI;
     private MissionPanelUI missionPanelUI;
+    private ShopPanelUI shopPanelUI;
+    private RoomPanelUI roomPanelUI;
     private FocusPanelUI focusPanelUI;
+    private HomeDetailsPanelUI homeDetailsPanelUI;
 
     private void Awake()
     {
-        Debug.Log("HUDUI Awake called");
-
         AutoResolveSceneBindings();
         HideLegacyHomeNoise();
         BindButtons();
     }
 
-    private void Start()
-    {
-        Debug.Log("HUDUI Start called");
-    }
-
-    public void SetDependencies(GameManager manager, AppShellUI shell, SkillsPanelUI skillsPanel, MissionPanelUI missionPanel, FocusPanelUI focusPanel)
+    public void SetDependencies(GameManager manager, AppShellUI shell, SkillsPanelUI skillsPanel, MissionPanelUI missionPanel, ShopPanelUI shopPanel, RoomPanelUI roomPanel, FocusPanelUI focusPanel, HomeDetailsPanelUI homeDetailsPanel)
     {
         if (gameManager != null && gameManager != manager)
         {
             UnsubscribeFromGameManager();
         }
 
+        UnsubscribeFromShell();
+
         gameManager = manager;
         appShellUI = shell;
         skillsPanelUI = skillsPanel;
         missionPanelUI = missionPanel;
+        shopPanelUI = shopPanel;
+        roomPanelUI = roomPanel;
         focusPanelUI = focusPanel;
+        homeDetailsPanelUI = homeDetailsPanel;
 
         SubscribeToGameManager();
+        SubscribeToShell();
     }
 
     private void AutoResolveSceneBindings()
@@ -235,6 +237,27 @@ public class HUDUI : MonoBehaviour
         gameManager.OnFocusResultReady -= HandleFocusResultReady;
     }
 
+    private void SubscribeToShell()
+    {
+        if (appShellUI == null)
+        {
+            return;
+        }
+
+        appShellUI.OnScreenChanged -= HandleShellScreenChanged;
+        appShellUI.OnScreenChanged += HandleShellScreenChanged;
+    }
+
+    private void UnsubscribeFromShell()
+    {
+        if (appShellUI == null)
+        {
+            return;
+        }
+
+        appShellUI.OnScreenChanged -= HandleShellScreenChanged;
+    }
+
     private void BindButtons()
     {
         if (missionsSummaryButton != null)
@@ -357,6 +380,11 @@ public class HUDUI : MonoBehaviour
             return;
         }
 
+        UpdatePetFlow();
+    }
+
+    private void HandleShellScreenChanged(AppScreen screen)
+    {
         UpdatePetFlow();
     }
 
@@ -518,9 +546,12 @@ public class HUDUI : MonoBehaviour
     {
         bool skillsVisible = skillsPanelUI != null && skillsPanelUI.IsPanelVisible();
         bool missionsVisible = missionPanelUI != null && missionPanelUI.IsPanelVisible();
+        bool shopVisible = shopPanelUI != null && shopPanelUI.IsPanelVisible();
+        bool roomVisible = roomPanelUI != null && roomPanelUI.IsPanelVisible();
         bool focusVisible = focusPanelUI != null && focusPanelUI.IsPanelVisible();
+        bool homeDetailsVisible = homeDetailsPanelUI != null && homeDetailsPanelUI.IsPanelVisible();
 
-        return !skillsVisible && !missionsVisible && !focusVisible;
+        return !skillsVisible && !missionsVisible && !shopVisible && !roomVisible && !focusVisible && !homeDetailsVisible;
     }
 
     private void HideLegacyHomeNoise()
@@ -595,5 +626,6 @@ public class HUDUI : MonoBehaviour
         }
 
         UnsubscribeFromGameManager();
+        UnsubscribeFromShell();
     }
 }

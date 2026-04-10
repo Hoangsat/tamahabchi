@@ -23,6 +23,8 @@ public class MissionPanelUI : MonoBehaviour
 
     private RectTransform screenRoot;
     private RectTransform scrollContent;
+    private Image heroCardBackgroundImage;
+    private Image heroAccentImage;
     private TextMeshProUGUI headerStatsText;
     private Button footerCreateButton;
     private Button footerRerollButton;
@@ -55,6 +57,7 @@ public class MissionPanelUI : MonoBehaviour
         {
             closeButton.onClick.RemoveListener(ClosePanel);
             closeButton.onClick.AddListener(ClosePanel);
+            closeButton.gameObject.SetActive(false);
         }
 
         if (panelRoot != null)
@@ -89,9 +92,15 @@ public class MissionPanelUI : MonoBehaviour
     public void ShowPanel()
     {
         BuildUiIfNeeded();
+        SetStatus(string.Empty);
         if (panelRoot != null)
         {
             panelRoot.SetActive(true);
+        }
+
+        if (closeButton != null)
+        {
+            closeButton.gameObject.SetActive(false);
         }
 
         RefreshUI();
@@ -167,9 +176,44 @@ public class MissionPanelUI : MonoBehaviour
             headerStatsText.text = $"{bonus.completedSelectedSkillMissionCount}/{Mathf.Max(5, bonus.selectedSkillMissionCount)} tracked missions completed";
         }
 
+        if (panelStatusText != null && string.IsNullOrEmpty(panelStatusText.text))
+        {
+            panelStatusText.text = BuildDefaultHeaderHint(skillMissions, routines, bonus);
+        }
+
+        if (heroCardBackgroundImage != null)
+        {
+            Color accent = bonus.isReady
+                ? new Color(0.44f, 0.81f, 0.58f, 1f)
+                : new Color(0.38f, 0.69f, 0.95f, 1f);
+            heroCardBackgroundImage.color = Color.Lerp(new Color(0.14f, 0.18f, 0.27f, 0.98f), accent, 0.2f);
+            if (heroAccentImage != null)
+            {
+                heroAccentImage.color = accent;
+            }
+        }
+
         RebuildContent(skillMissions, routines, bonus);
         RefreshPopupLists();
         RebuildLayouts();
+    }
+
+    private string BuildDefaultHeaderHint(List<MissionEntryData> skillMissions, List<MissionEntryData> routines, MissionBonusStatus bonus)
+    {
+        int skillCount = skillMissions != null ? skillMissions.Count : 0;
+        int routineCount = routines != null ? routines.Count : 0;
+
+        if (bonus != null && bonus.isReady && !bonus.isClaimed)
+        {
+            return "Your 5/5 bonus is ready to claim. Collect it, then keep rotating tracked missions.";
+        }
+
+        if (skillCount <= 0 && routineCount <= 0)
+        {
+            return "Create your first mission below to start building a stronger day-to-day loop.";
+        }
+
+        return "Track a few focused goals, then use routines for quick wins and instant rewards.";
     }
 
     private void RebuildContent(List<MissionEntryData> skillMissions, List<MissionEntryData> routines, MissionBonusStatus bonus)
@@ -495,9 +539,22 @@ public class MissionPanelUI : MonoBehaviour
         closeButton = CreateActionButton(topRow.transform as RectTransform, "CloseButton", "Close", ClosePanel);
         ApplyButtonSizing(closeButton, 160f, 56f, false);
 
-        resetInfoText = CreateText(headerBlock.transform as RectTransform, "ResetInfoText", string.Empty, 20f, FontStyles.Normal, TextAlignmentOptions.Left);
-        headerStatsText = CreateText(headerBlock.transform as RectTransform, "HeaderStatsText", string.Empty, 18f, FontStyles.Bold, TextAlignmentOptions.Left);
-        panelStatusText = CreateText(headerBlock.transform as RectTransform, "PanelStatusText", string.Empty, 18f, FontStyles.Normal, TextAlignmentOptions.Left);
+        GameObject heroCard = CreatePanel(headerBlock.transform as RectTransform, "HeroCard", new Color(0.14f, 0.18f, 0.27f, 0.98f), false);
+        VerticalLayoutGroup heroLayout = heroCard.AddComponent<VerticalLayoutGroup>();
+        heroLayout.padding = new RectOffset(18, 18, 24, 16);
+        heroLayout.spacing = 6f;
+        heroLayout.childControlWidth = true;
+        heroLayout.childControlHeight = true;
+        heroLayout.childForceExpandWidth = true;
+        heroLayout.childForceExpandHeight = false;
+        LayoutElement heroCardLayout = heroCard.AddComponent<LayoutElement>();
+        heroCardLayout.preferredHeight = 112f;
+        heroCardBackgroundImage = heroCard.GetComponent<Image>();
+        heroAccentImage = CreateAccentStrip(heroCard.transform as RectTransform, "HeroAccentStrip", new Color(0.38f, 0.69f, 0.95f, 1f), 12f);
+
+        resetInfoText = CreateText(heroCard.transform as RectTransform, "ResetInfoText", string.Empty, 20f, FontStyles.Bold, TextAlignmentOptions.Left);
+        headerStatsText = CreateText(heroCard.transform as RectTransform, "HeaderStatsText", string.Empty, 24f, FontStyles.Bold, TextAlignmentOptions.Left);
+        panelStatusText = CreateText(heroCard.transform as RectTransform, "PanelStatusText", string.Empty, 18f, FontStyles.Normal, TextAlignmentOptions.Left);
         panelStatusText.color = new Color(0.84f, 0.9f, 0.98f, 0.9f);
 
         scrollContent = CreateScrollContent(screenRoot, "MissionScroll");
@@ -507,7 +564,7 @@ public class MissionPanelUI : MonoBehaviour
             scrollRoot.anchorMin = new Vector2(0f, 0f);
             scrollRoot.anchorMax = new Vector2(1f, 1f);
             scrollRoot.offsetMin = new Vector2(0f, 92f);
-            scrollRoot.offsetMax = new Vector2(0f, -172f);
+            scrollRoot.offsetMax = new Vector2(0f, -248f);
             scrollRoot.pivot = new Vector2(0.5f, 0.5f);
         }
 
@@ -517,7 +574,7 @@ public class MissionPanelUI : MonoBehaviour
         emptyStateRect.anchorMin = new Vector2(0f, 0f);
         emptyStateRect.anchorMax = new Vector2(1f, 1f);
         emptyStateRect.offsetMin = new Vector2(48f, 120f);
-        emptyStateRect.offsetMax = new Vector2(-48f, -188f);
+        emptyStateRect.offsetMax = new Vector2(-48f, -264f);
 
         GameObject footer = CreateObject("FooterActions", screenRoot);
         RectTransform footerRect = footer.GetComponent<RectTransform>();
@@ -675,9 +732,10 @@ public class MissionPanelUI : MonoBehaviour
 
     private void AddSectionHeader(string title, string subtitle)
     {
-        GameObject card = CreatePanel(scrollContent, $"Section_{spawnedContent.Count}", new Color(0.09f, 0.13f, 0.2f, 0.96f), false);
+        GameObject card = CreatePanel(scrollContent, $"Section_{spawnedContent.Count}", new Color(0.13f, 0.18f, 0.28f, 0.98f), false);
+        CreateAccentStrip(card.transform as RectTransform, "SectionAccentStrip", new Color(0.38f, 0.69f, 0.95f, 1f), 10f);
         VerticalLayoutGroup layout = card.AddComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(20, 20, 18, 18);
+        layout.padding = new RectOffset(20, 20, 24, 18);
         layout.spacing = 6f;
         CreateText(card.transform as RectTransform, "Title", title, 30f, FontStyles.Bold, TextAlignmentOptions.Left);
         TextMeshProUGUI subtitleText = CreateText(card.transform as RectTransform, "Subtitle", subtitle, 18f, FontStyles.Normal, TextAlignmentOptions.Left);
@@ -687,9 +745,10 @@ public class MissionPanelUI : MonoBehaviour
 
     private void AddBonusCard(MissionBonusStatus bonus)
     {
-        GameObject card = CreatePanel(scrollContent, $"Bonus_{spawnedContent.Count}", new Color(0.16f, 0.21f, 0.14f, 0.98f), false);
+        GameObject card = CreatePanel(scrollContent, $"Bonus_{spawnedContent.Count}", new Color(0.18f, 0.24f, 0.16f, 0.98f), false);
+        CreateAccentStrip(card.transform as RectTransform, "BonusAccentStrip", new Color(0.44f, 0.81f, 0.58f, 1f), 10f);
         VerticalLayoutGroup layout = card.AddComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(20, 20, 20, 20);
+        layout.padding = new RectOffset(20, 20, 26, 20);
         layout.spacing = 10f;
         CreateText(card.transform as RectTransform, "Title", "5/5 Skill Mission Bonus", 28f, FontStyles.Bold, TextAlignmentOptions.Left);
         TextMeshProUGUI progressText = CreateText(card.transform as RectTransform, "Progress", $"{bonus.completedSelectedSkillMissionCount}/5 completed", 20f, FontStyles.Normal, TextAlignmentOptions.Left);
@@ -869,12 +928,12 @@ public class MissionPanelUI : MonoBehaviour
 
         if (resetInfoText != null)
         {
-            resetInfoText.color = new Color(0.84f, 0.89f, 0.98f, 0.88f);
+            resetInfoText.color = new Color(1f, 0.88f, 0.48f, 1f);
         }
 
         if (headerStatsText != null)
         {
-            headerStatsText.color = new Color(0.88f, 0.93f, 1f, 0.92f);
+            headerStatsText.color = new Color(0.96f, 0.98f, 1f, 1f);
         }
     }
 
@@ -930,6 +989,18 @@ public class MissionPanelUI : MonoBehaviour
         text.textWrappingMode = TextWrappingModes.Normal;
         text.enableAutoSizing = false;
         return text;
+    }
+
+    private Image CreateAccentStrip(RectTransform parent, string name, Color color, float height)
+    {
+        GameObject root = CreatePanel(parent, name, color, false);
+        RectTransform rect = root.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.offsetMin = new Vector2(0f, -height);
+        rect.offsetMax = Vector2.zero;
+        return root.GetComponent<Image>();
     }
 
     private GameObject CreatePanel(RectTransform parent, string name, Color color, bool stretch)

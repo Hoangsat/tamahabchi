@@ -4,6 +4,7 @@ using TMPro;
 using System;
 using System.Collections.Generic;
 
+[DefaultExecutionOrder(-200)]
 public class GameManager : MonoBehaviour
 {
     private enum BootstrapMode
@@ -47,18 +48,21 @@ public class GameManager : MonoBehaviour
     private PetFlowCoordinator petFlowCoordinator;
     private CoreLoopActionCoordinator coreLoopActionCoordinator;
     private SaveLifecycleCoordinator saveLifecycleCoordinator = new SaveLifecycleCoordinator();
-    [SerializeField] private RoomVisualController roomVisualController;
+    [SerializeField] private Transform sceneUiRoot;
     [SerializeField] private HUDUI hudUI;
     [SerializeField] private SkillsPanelUI skillsPanelUI;
     [SerializeField] private MissionPanelUI missionPanelUI;
+    [SerializeField] private ShopPanelUI shopPanelUI;
+    [SerializeField] private RoomPanelUI roomPanelUI;
+    [SerializeField] private HomeDetailsPanelUI homeDetailsPanelUI;
     private bool justReset = false;
     private bool isResetting = false;
     private bool isInitialized = false;
-    private bool missionHudFallbackLogged = false;
     private double pendingOfflineSeconds = 0d;
     private int activeResetBucket = 0;
     private int lastAppliedResetBucket = 0;
     private const int MaxSupportedRoomLevel = 2;
+    private const int MissionHudSlotCount = 5;
 
     public Button workButton;
     public Button feedButton;
@@ -99,6 +103,7 @@ public class GameManager : MonoBehaviour
 
     [Header("Mission Debug (Optional)")]
     [SerializeField] private bool missionDebugLoggingEnabled = false;
+    [SerializeField] private bool lifecycleDebugLoggingEnabled = false;
 
     private void ShowFeedback(string message)
     {
@@ -115,12 +120,22 @@ public class GameManager : MonoBehaviour
     {
         if (feedbackText != null) feedbackText.gameObject.SetActive(false);
     }
+
+    private void LogLifecycle(string message)
+    {
+        if (lifecycleDebugLoggingEnabled)
+        {
+            Debug.Log(message);
+        }
+    }
     
     private string debugInitLog = "Boot...";
 
     void Awake()
     {
         debugInitLog += " AW |";
+        ResolveReferences();
+        BindUiDependencies(false);
     }
 
     void OnGUI()
@@ -196,47 +211,167 @@ public class GameManager : MonoBehaviour
     {
         debugInitLog += " refs |";
 
-        if (focusPanelUI == null)
+        if (sceneUiRoot == null)
         {
-            focusPanelUI = UnityEngine.Object.FindAnyObjectByType<FocusPanelUI>();
+            sceneUiRoot = ResolveSceneUiRootFromAssignedControls();
         }
 
-        if (appShellUI == null)
+        if (sceneUiRoot == null)
         {
-            appShellUI = UnityEngine.Object.FindAnyObjectByType<AppShellUI>();
-        }
-
-        if (roomVisualController == null)
-        {
-            roomVisualController = UnityEngine.Object.FindAnyObjectByType<RoomVisualController>();
+            return;
         }
 
         if (hudUI == null)
         {
-            hudUI = UnityEngine.Object.FindAnyObjectByType<HUDUI>();
+            hudUI = ResolveUiComponent<HUDUI>();
         }
 
         if (skillsPanelUI == null)
         {
-            skillsPanelUI = UnityEngine.Object.FindAnyObjectByType<SkillsPanelUI>();
+            skillsPanelUI = ResolveUiComponent<SkillsPanelUI>();
         }
 
         if (missionPanelUI == null)
         {
-            missionPanelUI = UnityEngine.Object.FindAnyObjectByType<MissionPanelUI>();
+            missionPanelUI = ResolveUiComponent<MissionPanelUI>();
         }
+
+        if (shopPanelUI == null)
+        {
+            shopPanelUI = ResolveUiComponent<ShopPanelUI>();
+        }
+
+        if (roomPanelUI == null)
+        {
+            roomPanelUI = ResolveUiComponent<RoomPanelUI>();
+        }
+
+        if (homeDetailsPanelUI == null)
+        {
+            homeDetailsPanelUI = ResolveUiComponent<HomeDetailsPanelUI>();
+        }
+
+        if (focusPanelUI == null)
+        {
+            focusPanelUI = ResolveUiComponent<FocusPanelUI>();
+        }
+
+        if (appShellUI == null)
+        {
+            appShellUI = ResolveUiComponent<AppShellUI>();
+        }
+    }
+
+    private Transform ResolveSceneUiRootFromAssignedControls()
+    {
+        Component[] anchors =
+        {
+            feedbackText,
+            onboardingHintText,
+            missionFeedText,
+            workButton,
+            feedButton,
+            buyButton,
+            focusButton,
+            upgradeRoomButton
+        };
+
+        for (int i = 0; i < anchors.Length; i++)
+        {
+            Component anchor = anchors[i];
+            if (anchor == null)
+            {
+                continue;
+            }
+
+            Canvas canvas = anchor.GetComponentInParent<Canvas>(true);
+            if (canvas != null)
+            {
+                return canvas.transform;
+            }
+        }
+
+        return null;
+    }
+
+    private T ResolveUiComponent<T>() where T : Component
+    {
+        if (sceneUiRoot == null)
+        {
+            return null;
+        }
+
+        T directMatch = sceneUiRoot.GetComponent<T>();
+        if (directMatch != null)
+        {
+            return directMatch;
+        }
+
+        return sceneUiRoot.GetComponentInChildren<T>(true);
     }
 
     private bool ValidateStartupPrerequisites()
     {
-        if (balanceConfig != null)
+        if (balanceConfig == null)
         {
-            return true;
+            debugInitLog += " ERR: balCfg null |";
+            Debug.LogError("BalanceConfig is not assigned in GameManager.");
+            return false;
         }
 
-        debugInitLog += " ERR: balCfg null |";
-        Debug.LogError("BalanceConfig is not assigned in GameManager.");
-        return false;
+        if (sceneUiRoot == null)
+        {
+            debugInitLog += " ERR: uiRoot null |";
+            Debug.LogError("GameManager could not resolve the scene UI root from assigned controls.");
+            return false;
+        }
+
+        List<string> missingUiDependencies = GetMissingUiDependencies();
+        if (missingUiDependencies.Count > 0)
+        {
+            debugInitLog += " ERR: ui deps |";
+            Debug.LogError("GameManager is missing critical UI dependencies: " + string.Join(", ", missingUiDependencies));
+            return false;
+        }
+
+        List<string> missingMissionHudBindings = GetMissingMissionHudBindings();
+        if (missingMissionHudBindings.Count > 0)
+        {
+            debugInitLog += " ERR: mission hud |";
+            Debug.LogError("GameManager is missing required Mission HUD bindings: " + string.Join(", ", missingMissionHudBindings));
+            return false;
+        }
+
+        return true;
+    }
+
+    private List<string> GetMissingUiDependencies()
+    {
+        List<string> missing = new List<string>();
+        if (hudUI == null) missing.Add(nameof(hudUI));
+        if (skillsPanelUI == null) missing.Add(nameof(skillsPanelUI));
+        if (missionPanelUI == null) missing.Add(nameof(missionPanelUI));
+        if (shopPanelUI == null) missing.Add(nameof(shopPanelUI));
+        if (roomPanelUI == null) missing.Add(nameof(roomPanelUI));
+        if (focusPanelUI == null) missing.Add(nameof(focusPanelUI));
+        if (appShellUI == null) missing.Add(nameof(appShellUI));
+        return missing;
+    }
+
+    private List<string> GetMissingMissionHudBindings()
+    {
+        List<string> missing = new List<string>();
+        if (missionFeedText == null) missing.Add(nameof(missionFeedText));
+        if (missionWorkText == null) missing.Add(nameof(missionWorkText));
+        if (missionFocusText == null) missing.Add(nameof(missionFocusText));
+        if (missionExtra1Text == null) missing.Add(nameof(missionExtra1Text));
+        if (missionExtra2Text == null) missing.Add(nameof(missionExtra2Text));
+        if (claimFeedButton == null) missing.Add(nameof(claimFeedButton));
+        if (claimWorkButton == null) missing.Add(nameof(claimWorkButton));
+        if (claimFocusButton == null) missing.Add(nameof(claimFocusButton));
+        if (claimExtra1Button == null) missing.Add(nameof(claimExtra1Button));
+        if (claimExtra2Button == null) missing.Add(nameof(claimExtra2Button));
+        return missing;
     }
 
     private void FinalizeStartup()
@@ -461,14 +596,7 @@ public class GameManager : MonoBehaviour
                 SaveGame = SaveGame,
                 AddXp = AddXP,
                 ShowFeedback = ShowFeedback,
-                ApplyMissionRewards = ApplyMissionClaimResult,
-                ApplyRoomVisuals = data =>
-                {
-                    if (roomVisualController != null)
-                    {
-                        roomVisualController.ApplyRoom(data);
-                    }
-                }
+                ApplyMissionRewards = ApplyMissionClaimResult
             });
         focusCoordinator.ResetRuntimeState();
         focusCoordinator.RestoreState(focusStateData, pendingOfflineSeconds);
@@ -478,11 +606,26 @@ public class GameManager : MonoBehaviour
     private void InitializeUiBindings()
     {
         debugInitLog += " ui-bind |";
+        ResolveReferences();
+        BindUiDependencies(true);
+    }
+
+    private void BindUiDependencies(bool validateOptionalUi)
+    {
         focusPanelUI?.SetGameManager(this);
         skillsPanelUI?.SetGameManager(this);
         missionPanelUI?.SetGameManager(this);
-        appShellUI?.SetDependencies(this, skillsPanelUI, missionPanelUI, focusPanelUI);
-        hudUI?.SetDependencies(this, appShellUI, skillsPanelUI, missionPanelUI, focusPanelUI);
+        shopPanelUI?.SetGameManager(this);
+        roomPanelUI?.SetGameManager(this);
+        homeDetailsPanelUI?.SetGameManager(this);
+        appShellUI?.SetDependencies(this, skillsPanelUI, missionPanelUI, shopPanelUI, roomPanelUI, focusPanelUI, homeDetailsPanelUI);
+        hudUI?.SetDependencies(this, appShellUI, skillsPanelUI, missionPanelUI, shopPanelUI, roomPanelUI, focusPanelUI, homeDetailsPanelUI);
+
+        if (!validateOptionalUi)
+        {
+            return;
+        }
+
         ValidateOptionalUiWiring();
     }
 
@@ -502,12 +645,6 @@ public class GameManager : MonoBehaviour
     {
         debugInitLog += " sync-ui |";
         NotifyAllUI();
-        Debug.Log("Pet hunger: " + petData.hunger);
-
-        if (roomVisualController != null)
-        {
-            roomVisualController.ApplyRoom(roomData);
-        }
 
         UpdateUI();
         UpdateMissionUI();
@@ -573,9 +710,11 @@ public class GameManager : MonoBehaviour
     public void OnBuyMealButton()   { TryBuyItem("food_meal", balanceConfig.mealPrice); }
     public void OnBuyPremiumButton(){ TryBuyItem("food_premium", balanceConfig.premiumPrice); }
 
-    private void TryBuyItem(string itemId, int price)
+    private ShopPurchaseResult TryBuyItem(string itemId, int price)
     {
-        coreLoopActionCoordinator?.TryBuyItem(itemId, price);
+        return coreLoopActionCoordinator != null
+            ? coreLoopActionCoordinator.TryBuyItem(itemId, price)
+            : ShopPurchaseResult.Fail("Shop unavailable");
     }
 
     public void OnWorkButton()
@@ -782,6 +921,11 @@ public class GameManager : MonoBehaviour
         return skillsSystem != null ? skillsSystem.GetSkillById(id) : null;
     }
 
+    public bool HasSkillName(string name)
+    {
+        return skillsSystem != null && skillsSystem.HasSkillName(name);
+    }
+
     public List<MissionEntryData> GetAllDailyMissions()
     {
         EnsureDailySkillMissionsCurrent();
@@ -798,6 +942,237 @@ public class GameManager : MonoBehaviour
     {
         EnsureDailySkillMissionsCurrent();
         return missionSystem != null ? missionSystem.GetRoutineMissions() : new List<MissionEntryData>();
+    }
+
+    public int GetCurrentCoins()
+    {
+        if (currencySystem != null)
+        {
+            return currencySystem.GetCoins();
+        }
+
+        return currencyData != null ? currencyData.coins : 0;
+    }
+
+    public RoomPanelStateData GetRoomPanelState()
+    {
+        int currentLevel = roomData != null ? Mathf.Clamp(roomData.roomLevel, 0, MaxSupportedRoomLevel) : 0;
+        int nextLevel = Mathf.Clamp(currentLevel + 1, 0, MaxSupportedRoomLevel);
+        bool isMaxLevel = currentLevel >= MaxSupportedRoomLevel;
+        string currentVisualLabel = GetRoomVisualLabel(currentLevel);
+        string nextVisualLabel = isMaxLevel ? currentVisualLabel : GetRoomVisualLabel(nextLevel);
+        int upgradeCost = GetRoomUpgradeCostForLevel(currentLevel);
+        int unlockLevel = GetRoomUnlockLevelForLevel(currentLevel);
+        string blockedReason = GetRoomUpgradeBlockedReason(upgradeCost, unlockLevel, isMaxLevel);
+
+        return new RoomPanelStateData
+        {
+            currentLevel = currentLevel,
+            maxLevel = MaxSupportedRoomLevel,
+            activeVisualLevel = GetActiveRoomVisualLevel(currentLevel),
+            currentUpgradeCost = isMaxLevel ? 0 : upgradeCost,
+            currentUnlockLevel = isMaxLevel ? 0 : unlockLevel,
+            canUpgradeNow = !isMaxLevel && string.IsNullOrEmpty(blockedReason),
+            isMaxLevel = isMaxLevel,
+            blockedReason = blockedReason,
+            currentVisualStateLabel = currentVisualLabel,
+            nextVisualStateLabel = nextVisualLabel,
+            currentBonusSummary = GetCurrentRoomBonusSummary(currentLevel),
+            nextBonusSummary = GetNextRoomBonusSummary(currentLevel, nextLevel, isMaxLevel),
+            footerNote = "Customization coming later."
+        };
+    }
+
+    public bool TryUpgradeRoomFromPanel(out string message)
+    {
+        if (coreLoopActionCoordinator == null)
+        {
+            message = "Room unavailable";
+            return false;
+        }
+
+        ShopPurchaseResult result = coreLoopActionCoordinator.TryUpgradeRoom();
+        message = result.message;
+        return result.success;
+    }
+
+    public bool OpenRoomPanel()
+    {
+        ResolveReferences();
+
+        if (appShellUI != null)
+        {
+            return appShellUI.OpenRoom();
+        }
+
+        if (roomPanelUI == null)
+        {
+            return false;
+        }
+
+        roomPanelUI.ShowPanel();
+        return true;
+    }
+
+    public bool OpenHomeDetailsPanel()
+    {
+        ResolveReferences();
+
+        if (appShellUI != null)
+        {
+            return appShellUI.OpenHomeDetails();
+        }
+
+        if (homeDetailsPanelUI == null)
+        {
+            return false;
+        }
+
+        homeDetailsPanelUI.ShowPanel();
+        return true;
+    }
+
+    public List<ShopItemViewData> GetShopItems(ShopCategory category)
+    {
+        List<ShopItemViewData> items = new List<ShopItemViewData>();
+        ShopCatalogItemData[] catalog = ShopCatalogDefinitions.Create(balanceConfig);
+        if (catalog == null)
+        {
+            return items;
+        }
+
+        for (int i = 0; i < catalog.Length; i++)
+        {
+            ShopCatalogItemData definition = catalog[i];
+            if (definition != null && definition.category == category)
+            {
+                items.Add(CreateShopItemView(definition));
+            }
+        }
+
+        return items;
+    }
+
+    public string GetShopPlaceholderMessage(ShopCategory category)
+    {
+        switch (category)
+        {
+            case ShopCategory.Energy:
+                return "Energy items are coming soon.";
+            case ShopCategory.Mood:
+                return "Mood boosts are coming soon.";
+            case ShopCategory.Skins:
+                return "Skins are coming soon.";
+            case ShopCategory.Special:
+                return "Special items are coming soon.";
+            default:
+                return "Food is fully active in this build.";
+        }
+    }
+
+    public string GetShopCategoryStatus(ShopCategory category)
+    {
+        switch (category)
+        {
+            case ShopCategory.Food:
+                return "Food items are ready to buy and feed.";
+            case ShopCategory.Energy:
+                return "Energy items can be bought and used right here.";
+            case ShopCategory.Mood:
+                return "Mood items can be bought and used right here.";
+            case ShopCategory.Skins:
+                return "Skins are one-time unlocks and can be equipped here.";
+            case ShopCategory.Special:
+                return "Special items are visible, but still reserved for future systems.";
+            default:
+                return string.Empty;
+        }
+    }
+
+    public bool TryPurchaseShopItem(string itemId, out string message)
+    {
+        ShopCatalogItemData definition = GetShopCatalogItem(itemId);
+        if (definition == null)
+        {
+            message = "Item unavailable";
+            return false;
+        }
+
+        if (!definition.purchaseEnabled)
+        {
+            message = string.IsNullOrEmpty(definition.unavailableReason) ? "Coming soon" : definition.unavailableReason;
+            return false;
+        }
+
+        ShopPurchaseResult result = definition.kind == ShopItemKind.Cosmetic
+            ? TryBuySkin(definition.id, definition.price)
+            : TryBuyItem(definition.id, definition.price);
+        message = result.message;
+        return result.success;
+    }
+
+    public bool TryUseShopItem(string itemId, out string message)
+    {
+        ShopCatalogItemData definition = GetShopCatalogItem(itemId);
+        if (definition == null)
+        {
+            message = "Item unavailable";
+            return false;
+        }
+
+        if (definition.kind != ShopItemKind.Consumable)
+        {
+            message = "Item cannot be used";
+            return false;
+        }
+
+        ShopPurchaseResult result = coreLoopActionCoordinator != null
+            ? coreLoopActionCoordinator.TryUseConsumableItem(definition.id, definition.effectValue, definition.category)
+            : ShopPurchaseResult.Fail("Shop unavailable");
+        message = result.message;
+        return result.success;
+    }
+
+    public bool TryEquipShopSkin(string itemId, out string message)
+    {
+        ShopCatalogItemData definition = GetShopCatalogItem(itemId);
+        if (definition == null || definition.kind != ShopItemKind.Cosmetic)
+        {
+            message = "Skin unavailable";
+            return false;
+        }
+
+        if (inventorySystem == null || !inventorySystem.HasSkin(itemId))
+        {
+            message = "Buy first";
+            return false;
+        }
+
+        if (string.Equals(GetEquippedSkinId(), itemId, StringComparison.Ordinal))
+        {
+            message = "Already equipped";
+            return false;
+        }
+
+        bool equipped = inventorySystem.EquipSkin(itemId);
+        if (!equipped)
+        {
+            message = "Equip failed";
+            return false;
+        }
+
+        OnInventoryChanged?.Invoke();
+        OnPetChanged?.Invoke();
+        UpdateUI();
+        SaveGame();
+        message = $"Equipped {definition.displayName}";
+        ShowFeedback(message);
+        return true;
+    }
+
+    public string GetEquippedSkinId()
+    {
+        return inventorySystem != null ? inventorySystem.GetEquippedSkin() : "default";
     }
 
     public MissionBonusStatus GetSkillMissionBonusStatus()
@@ -1051,18 +1426,18 @@ public class GameManager : MonoBehaviour
         isResetting = true;
         isInitialized = false;
         justReset = true;
-        Debug.Log("Reset: clearing save");
+        LogLifecycle("Reset: clearing save");
     }
 
     private void ReinitializeAfterReset()
     {
-        Debug.Log("Reset: initializing default state");
+        LogLifecycle("Reset: initializing default state");
         RunBootstrapLifecycle(BootstrapMode.CreateDefaults);
     }
 
     private void FinishResetFlow()
     {
-        Debug.Log("Reset: saving fresh baseline");
+        LogLifecycle("Reset: saving fresh baseline");
         ShowFeedback("Game reset");
         SaveGame();
         isInitialized = true;
@@ -1135,28 +1510,11 @@ public class GameManager : MonoBehaviour
 
     private void UpdateMissionUI()
     {
-        int hudSlots = GetMissionHudSlotCount();
         UpdateMissionEntry(GetMissionAtSlot(0), missionFeedText, claimFeedButton);
         UpdateMissionEntry(GetMissionAtSlot(1), missionWorkText, claimWorkButton);
         UpdateMissionEntry(GetMissionAtSlot(2), missionFocusText, claimFocusButton);
-
-        if (hudSlots >= 4)
-        {
-            UpdateMissionEntry(GetMissionAtSlot(3), missionExtra1Text, claimExtra1Button);
-        }
-        else
-        {
-            UpdateMissionEntry(null, missionExtra1Text, claimExtra1Button);
-        }
-
-        if (hudSlots >= 5)
-        {
-            UpdateMissionEntry(GetMissionAtSlot(4), missionExtra2Text, claimExtra2Button);
-        }
-        else
-        {
-            UpdateMissionEntry(null, missionExtra2Text, claimExtra2Button);
-        }
+        UpdateMissionEntry(GetMissionAtSlot(3), missionExtra1Text, claimExtra1Button);
+        UpdateMissionEntry(GetMissionAtSlot(4), missionExtra2Text, claimExtra2Button);
 
         OnMissionsChanged?.Invoke();
     }
@@ -1257,13 +1615,12 @@ public class GameManager : MonoBehaviour
 
     private MissionEntryData GetMissionAtSlot(int slotIndex)
     {
-        int hudSlots = GetMissionHudSlotCount();
-        if (missionSystem == null || slotIndex < 0 || slotIndex >= hudSlots)
+        if (missionSystem == null || slotIndex < 0 || slotIndex >= MissionHudSlotCount)
         {
             return null;
         }
 
-        List<MissionEntryData> visibleMissions = missionSystem.GetVisibleMissions(hudSlots);
+        List<MissionEntryData> visibleMissions = missionSystem.GetVisibleMissions(MissionHudSlotCount);
         return slotIndex < visibleMissions.Count ? visibleMissions[slotIndex] : null;
     }
 
@@ -1423,7 +1780,7 @@ public class GameManager : MonoBehaviour
 
         if (changed)
         {
-            Debug.Log($"Offline: {offlineSeconds:F0}s elapsed, pet state normalized");
+            LogLifecycle($"Offline: {offlineSeconds:F0}s elapsed, pet state normalized");
         }
 
         return changed;
@@ -1465,7 +1822,7 @@ public class GameManager : MonoBehaviour
 
         if (shouldRunReset)
         {
-            Debug.Log($"Daily reset triggered ({reason}): {previousResetBucket} -> {effectiveResetBucket}");
+            LogLifecycle($"Daily reset triggered ({reason}): {previousResetBucket} -> {effectiveResetBucket}");
             lastAppliedResetBucket = effectiveResetBucket;
         }
 
@@ -1486,37 +1843,13 @@ public class GameManager : MonoBehaviour
 
     private void LogTimeBootstrap(string lastSeenUtc)
     {
-        Debug.Log(
+        LogLifecycle(
             $"Time bootstrap: lastSeenUtc={(string.IsNullOrEmpty(lastSeenUtc) ? "<empty>" : lastSeenUtc)}, " +
             $"elapsed={pendingOfflineSeconds:F0}s, currentBucket={activeResetBucket}, lastBucket={lastAppliedResetBucket}");
     }
 
-    private int GetMissionHudSlotCount()
-    {
-        bool hasExtraSlot1 = missionExtra1Text != null && claimExtra1Button != null;
-        bool hasExtraSlot2 = missionExtra2Text != null && claimExtra2Button != null;
-
-        if (hasExtraSlot1 && hasExtraSlot2)
-        {
-            return 5;
-        }
-
-        if (!missionHudFallbackLogged && (missionExtra1Text == null || claimExtra1Button == null || missionExtra2Text == null || claimExtra2Button == null))
-        {
-            Debug.LogWarning("Mission HUD extra slots are not fully wired. Falling back to 3 visible mission slots.");
-            missionHudFallbackLogged = true;
-        }
-
-        return 3;
-    }
-
     private void ValidateOptionalUiWiring()
     {
-        if (roomVisualController == null)
-        {
-            Debug.LogWarning("RoomVisualController is not assigned. Room upgrades will not update visuals.");
-        }
-
         bool hasAnyTierButtons =
             buySnackButton != null || buyMealButton != null || buyPremiumButton != null ||
             feedSnackButton != null || feedMealButton != null || feedPremiumButton != null;
@@ -1535,7 +1868,7 @@ public class GameManager : MonoBehaviour
     public void SaveGame()
     {
         SaveData data = CreateSaveDataSnapshot();
-        Debug.Log($"SaveGame: hunger={petData.hunger}, coins={currencyData.coins}, lastSeenUtc={data.lastSeenUtc}, lastResetBucket={data.lastResetBucket}");
+        LogLifecycle($"SaveGame: hunger={petData.hunger}, coins={currencyData.coins}, lastSeenUtc={data.lastSeenUtc}, lastResetBucket={data.lastResetBucket}");
         saveLifecycleCoordinator.SaveState(data);
     }
 
@@ -1622,5 +1955,268 @@ public class GameManager : MonoBehaviour
 
         skillsPanelUI.ShowPanel();
         return true;
+    }
+
+    public bool OpenShopPanel()
+    {
+        ResolveReferences();
+
+        if (appShellUI != null)
+        {
+            return appShellUI.OpenShop();
+        }
+
+        if (shopPanelUI == null)
+        {
+            return false;
+        }
+
+        shopPanelUI.ShowPanel();
+        return true;
+    }
+
+    private string GetCurrentRoomBonusSummary(int currentLevel)
+    {
+        int moodBonus = balanceConfig != null ? Mathf.RoundToInt(balanceConfig.roomUpgradeMoodBonus) : 0;
+        if (currentLevel <= 0)
+        {
+            return "Current room: starter setup with no room upgrade bonus applied yet.";
+        }
+
+        return $"Current room: {GetRoomVisualLabel(currentLevel)}. Each completed room upgrade grants +{moodBonus} Mood immediately.";
+    }
+
+    private string GetNextRoomBonusSummary(int currentLevel, int nextLevel, bool isMaxLevel)
+    {
+        if (isMaxLevel)
+        {
+            return "Max level reached. This room already shows the highest shipped visual state.";
+        }
+
+        int moodBonus = balanceConfig != null ? Mathf.RoundToInt(balanceConfig.roomUpgradeMoodBonus) : 0;
+        return $"Next upgrade unlocks {GetRoomVisualLabel(nextLevel)} and grants +{moodBonus} Mood right away.";
+    }
+
+    private string GetRoomUpgradeBlockedReason(int upgradeCost, int unlockLevel, bool isMaxLevel)
+    {
+        if (petData == null || petData.isDead)
+        {
+            return "Pet is dead";
+        }
+
+        if (isMaxLevel)
+        {
+            return "Room is max level";
+        }
+
+        int currentLevel = progressionData != null ? progressionData.level : 0;
+        if (currentLevel < unlockLevel)
+        {
+            return $"Unlock at level {unlockLevel}";
+        }
+
+        int coins = GetCurrentCoins();
+        if (coins < upgradeCost)
+        {
+            return $"Need {upgradeCost} coins";
+        }
+
+        return string.Empty;
+    }
+
+    private int GetRoomUpgradeCostForLevel(int roomLevel)
+    {
+        if (balanceConfig == null)
+        {
+            return 0;
+        }
+
+        switch (roomLevel)
+        {
+            case 0:
+                return balanceConfig.roomUpgrade1Cost;
+            case 1:
+                return balanceConfig.roomUpgrade2Cost;
+            case 2:
+                return MaxSupportedRoomLevel > 2 ? balanceConfig.roomUpgrade3Cost : 0;
+            default:
+                return 0;
+        }
+    }
+
+    private int GetRoomUnlockLevelForLevel(int roomLevel)
+    {
+        if (balanceConfig == null)
+        {
+            return 0;
+        }
+
+        switch (roomLevel)
+        {
+            case 0:
+                return balanceConfig.roomUpgrade1UnlockLevel;
+            case 1:
+                return balanceConfig.roomUpgrade2UnlockLevel;
+            case 2:
+                return MaxSupportedRoomLevel > 2 ? balanceConfig.roomUpgrade3UnlockLevel : 0;
+            default:
+                return 0;
+        }
+    }
+
+    private int GetActiveRoomVisualLevel(int currentLevel)
+    {
+        return Mathf.Clamp(currentLevel, 0, MaxSupportedRoomLevel);
+    }
+
+    private string GetRoomVisualLabel(int roomLevel)
+    {
+        switch (Mathf.Clamp(roomLevel, 0, MaxSupportedRoomLevel))
+        {
+            case 0:
+                return "Starter Room";
+            case 1:
+                return "Cozy Room";
+            case 2:
+                return "Dream Room";
+            default:
+                return "Room";
+        }
+    }
+
+    private ShopPurchaseResult TryBuySkin(string itemId, int price)
+    {
+        return coreLoopActionCoordinator != null
+            ? coreLoopActionCoordinator.TryBuySkin(itemId, price)
+            : ShopPurchaseResult.Fail("Shop unavailable");
+    }
+
+    private ShopItemViewData CreateShopItemView(ShopCatalogItemData definition)
+    {
+        if (definition == null)
+        {
+            return new ShopItemViewData();
+        }
+
+        int coins = GetCurrentCoins();
+        bool petDead = petData == null || petData.isDead;
+        int currentLevel = progressionData != null ? progressionData.level : 0;
+        bool isUnlocked = currentLevel >= definition.unlockLevel;
+        int ownedCount = GetOwnedShopItemCount(definition);
+        bool alreadyOwned = definition.kind == ShopItemKind.Cosmetic && ownedCount > 0;
+        bool isEquipped = definition.kind == ShopItemKind.Cosmetic && string.Equals(GetEquippedSkinId(), definition.id, StringComparison.Ordinal);
+
+        bool canBuy = definition.purchaseEnabled && !alreadyOwned && !petDead && isUnlocked && coins >= definition.price;
+        string disabledReason = string.Empty;
+        if (!definition.purchaseEnabled)
+        {
+            disabledReason = string.IsNullOrEmpty(definition.unavailableReason) ? "Coming soon" : definition.unavailableReason;
+        }
+        else if (alreadyOwned)
+        {
+            disabledReason = "Owned";
+        }
+        else if (petDead)
+        {
+            disabledReason = "Pet is dead";
+        }
+        else if (!isUnlocked)
+        {
+            disabledReason = $"Unlock at level {definition.unlockLevel}";
+        }
+        else if (coins < definition.price)
+        {
+            disabledReason = $"Need {definition.price - coins} coins";
+        }
+
+        bool showUseAction = false;
+        bool canUseAction = false;
+        string useActionLabel = string.Empty;
+
+        if (definition.kind == ShopItemKind.Consumable)
+        {
+            showUseAction = true;
+            if (petDead)
+            {
+                useActionLabel = "Pet is dead";
+            }
+            else if (ownedCount <= 0)
+            {
+                useActionLabel = definition.category == ShopCategory.Food ? "No stock" : "No item";
+            }
+            else
+            {
+                useActionLabel = definition.category == ShopCategory.Food ? "Feed" : "Use";
+                canUseAction = true;
+            }
+        }
+        else if (definition.kind == ShopItemKind.Cosmetic)
+        {
+            showUseAction = true;
+            if (!alreadyOwned)
+            {
+                useActionLabel = "Buy first";
+            }
+            else if (isEquipped)
+            {
+                useActionLabel = "Equipped";
+            }
+            else
+            {
+                useActionLabel = "Equip";
+                canUseAction = true;
+            }
+        }
+
+        return new ShopItemViewData
+        {
+            id = definition.id,
+            displayName = definition.displayName,
+            description = definition.description,
+            iconLabel = definition.iconLabel,
+            price = definition.price,
+            ownedCount = ownedCount,
+            canBuy = canBuy,
+            disabledReason = disabledReason,
+            category = definition.category,
+            kind = definition.kind,
+            showUseAction = showUseAction,
+            canUseAction = canUseAction,
+            useActionLabel = useActionLabel
+        };
+    }
+
+    private int GetOwnedShopItemCount(ShopCatalogItemData definition)
+    {
+        if (definition == null)
+        {
+            return 0;
+        }
+
+        if (definition.kind == ShopItemKind.Cosmetic)
+        {
+            return inventorySystem != null && inventorySystem.HasSkin(definition.id) ? 1 : 0;
+        }
+
+        return shopSystem != null ? shopSystem.GetOwnedCount(definition.id) : (inventorySystem != null ? inventorySystem.GetItemCount(definition.id) : 0);
+    }
+
+    private ShopCatalogItemData GetShopCatalogItem(string itemId)
+    {
+        if (string.IsNullOrEmpty(itemId))
+        {
+            return null;
+        }
+
+        ShopCatalogItemData[] catalog = ShopCatalogDefinitions.Create(balanceConfig);
+        for (int i = 0; i < catalog.Length; i++)
+        {
+            if (catalog[i] != null && string.Equals(catalog[i].id, itemId, StringComparison.Ordinal))
+            {
+                return catalog[i];
+            }
+        }
+
+        return null;
     }
 }

@@ -51,4 +51,54 @@ public class InventorySystem
         entry.count -= amount;
         return true;
     }
+
+    public bool HasSkin(string skinId)
+    {
+        if (inventoryData == null || inventoryData.ownedSkins == null || string.IsNullOrEmpty(skinId))
+        {
+            return false;
+        }
+
+        return inventoryData.ownedSkins.Contains(skinId);
+    }
+
+    public void AddSkin(string skinId)
+    {
+        if (inventoryData == null || string.IsNullOrEmpty(skinId))
+        {
+            return;
+        }
+
+        inventoryData.ownedSkins ??= new List<string>();
+        if (!inventoryData.ownedSkins.Contains(skinId))
+        {
+            inventoryData.ownedSkins.Add(skinId);
+        }
+    }
+
+    public string GetEquippedSkin()
+    {
+        if (inventoryData == null || string.IsNullOrEmpty(inventoryData.equippedSkin))
+        {
+            return "default";
+        }
+
+        return inventoryData.equippedSkin;
+    }
+
+    public bool EquipSkin(string skinId)
+    {
+        if (inventoryData == null || string.IsNullOrEmpty(skinId))
+        {
+            return false;
+        }
+
+        if (!string.Equals(skinId, "default") && !HasSkin(skinId))
+        {
+            return false;
+        }
+
+        inventoryData.equippedSkin = skinId;
+        return true;
+    }
 }

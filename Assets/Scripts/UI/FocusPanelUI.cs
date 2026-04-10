@@ -67,10 +67,6 @@ public class FocusPanelUI : MonoBehaviour
             panelRoot.SetActive(false);
         }
 
-        if (gameManager == null)
-        {
-            Debug.LogWarning("FocusPanelUI is waiting for GameManager injection.");
-        }
     }
 
     private void OnEnable()

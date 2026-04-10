@@ -44,14 +44,14 @@
 | Блок | Статус | Комментарий |
 |------|--------|-------------|
 | Skills + Radar | **Implemented** | Навыки без жёсткого лимита, ТОП-12, свой `RadarChartGraphic`, без внешней chart-зависимости |
-| MissionSystem core | **Implemented** | Daily reset 05:00, difficulty plan, personalization, weighted pick, composition repair, claim flow |
+| MissionSystem core | **Implemented** | Daily reset 05:00, weighted generation, claim flow, product-layer UI (`Skill Missions` + `Routines`), custom create flow, 5/5 bonus |
 | Mission debug telemetry | **Implemented** | Dev-only snapshot/report для generation pipeline |
-| Focus core | **Partial** | Базовый таймер и награда есть, полный `FocusPanel` UX ещё не собран |
-| Pet core | **Partial** | Hunger / Energy / Mood / death есть, `Health + Revive` остаются целевым scope |
+| Focus core | **Implemented** | Полный `FocusPanel` UX собран: выбор навыка и длительности, pause/resume, cancel, finish early, result screen, save/restore after restart |
+| Pet core | **Partial** | Базовые статы и core flow стабильны, но полноценный pet/room product-layer polish ещё впереди |
 | Shop / Inventory | **Partial** | Базовая логика есть, полноценный `ShopPanel` ещё впереди |
 | Battle | **Planned** | Остаётся целевым блоком roadmap |
 | Architecture cleanup | **Planned** | `Bootstrap / EventBus / thin GameManager` остаются целевой архитектурой |
-| Save / Load | **Implemented / Partial** | Runtime save/load стабилен, но сейчас через `PlayerPrefs`, а не file JSON в `persistentDataPath` |
+| Save / Load | **Implemented** | File-based JSON save в `Application.persistentDataPath`, backup/temp files, нормализация данных и legacy migration из `PlayerPrefs` |
 
 ---
 
@@ -354,6 +354,8 @@ public void UpdateRadarChart() {
 
 ### 5.3 Экран заданий (MissionPanel) — ДВА ТИПА
 
+**Актуальный runtime-статус:** экран уже собран как полноценная screen-level вкладка. Внутри есть отдельные секции `Skill Missions` и `Routines`, выбор до 5 skill missions, focus-linked progress, create flow для своих миссий/рутин, claim flow и бонус `5/5`.
+
 ```
 ┌────────────────────────────────────────────────────────────┐
 │ [❤️80] [⚡50] [😊70]              🧙5 │ 🪙150              │
@@ -384,6 +386,8 @@ public void UpdateRadarChart() {
 ```
 
 ### 5.4 Режим фокуса (FocusPanel)
+
+**Актуальный runtime-статус:** полный core loop уже собран. Игрок может выбрать навык и длительность, запустить фокус, поставить на паузу, продолжить, отменить, завершить раньше, получить отдельный result screen и восстановить состояние после перезапуска.
 
 - **Шаг 1:** выбор навыка (дропдаун или сетка иконок)
 - **Шаг 2:** выбор длительности: кнопки 15 | 30 | 45 | 60 + кастомный ползунок 5–120 минут
@@ -479,11 +483,11 @@ public void UpdateRadarChart() {
 
 ## 8. Система заданий — ДВА ТИПА (навыковые + рутины)
 
-**Статус:** `Partial`
+**Статус:** `Implemented`
 
-**Текущая реализация:** daily mission generation уже работает и включает `difficulty plan -> eligible candidates -> personalization weights -> weighted pick -> composition repair -> final ordering`, единый claim flow, daily reset в `05:00 local`, а также dev-only telemetry/debug snapshot.
+**Текущая реализация:** daily mission generation и product-layer уже собраны: `difficulty plan -> eligible candidates -> personalization weights -> weighted pick -> composition repair -> final ordering`, единый claim flow, daily reset в `05:00 local`, отдельные блоки `Skill Missions` и `Routines`, create flow для своих заданий/рутин, бонус `5/5` и dev-only telemetry/debug snapshot.
 
-**Целевой scope, который ещё впереди:** полноценные `Routine`-миссии, создание своих заданий/рутин и бонусный продуктовый слой вокруг них.
+**Что ещё впереди:** дальнейший визуальный polish, дополнительные mission widgets и архитектурная разгрузка UI glue.
 
 ### 8.1 Типы заданий
 
@@ -581,11 +585,11 @@ public void CheckDailyReset() {
 
 ## 9. Режим фокуса (таймер + награды)
 
-**Статус:** `Partial`
+**Статус:** `Implemented`
 
-**Текущая реализация:** базовый `FocusSystem` уже умеет стартовать сессию, отсчитывать таймер, завершать её и передавать данные для наград и прогресса навыка.
+**Текущая реализация:** `FocusSystem + FocusCoordinator + FocusPanelUI` уже закрывают полный цикл `select -> start -> running/paused -> complete/cancel/finish early -> result`. Награда рассчитывается в системе, UI её только показывает. Состояние активного фокуса сохраняется и восстанавливается после перезапуска; если таймер истёк оффлайн, игрок сразу получает result flow.
 
-**Целевой scope:** отдельный `FocusPanel`, pause/resume, cancel, finish early, fullscreen flow и отдельный reward screen.
+**Что ещё впереди:** дальнейший visual/audio polish и архитектурная разгрузка orchestration из `GameManager`.
 
 ### 9.1 Flow
 
@@ -848,11 +852,11 @@ public class RoomBonus {
 
 ## 15. Сохранения и оффлайн‑режим
 
-**Статус:** `Implemented / Partial`
+**Статус:** `Implemented`
 
-**Текущая реализация:** gameplay save/load работает стабильно, но сейчас сохранение идёт через `PlayerPrefs + JsonUtility`.
+**Текущая реализация:** gameplay save/load работает через file-based JSON в `Application.persistentDataPath`. Есть temp/main/backup files, нормализация данных при загрузке и legacy migration из старого `PlayerPrefs` save.
 
-**Целевой scope:** миграция на file-based JSON в `Application.persistentDataPath`, если это действительно понадобится продукту.
+**Что ещё впереди:** дополнительные resilience/polish улучшения и расширение схемы по мере появления новых продуктовых экранов.
 
 ### 15.1 Формат сохранения (JSON)
 
@@ -903,52 +907,52 @@ public class RoomBonus {
 
 Ниже остаётся целевой план разработки, но фактический прогресс проекта уже идёт нелинейно:
 - `Missions` и `Radar` ушли вперёд относительно части roadmap.
-- `Focus UX`, `Health/Revive`, `Battle` и архитектурная разгрузка ещё не догнали их по зрелости.
+- `Battle`, `Room/Shop` product UI и архитектурная разгрузка ещё не догнали их по зрелости.
 
 ### Спринт 0 — Настройка (1 день)
 - [ ] Установить Unity 6 (`6000.4.1f1`) или совместимую версию
 - [ ] Создать репозиторий Git, .gitignore
 - [ ] Настроить папки проекта
-- [ ] Подготовить собственный `RadarChartGraphic` без внешнего chart-ассета
+- [x] Подготовить собственный `RadarChartGraphic` без внешнего chart-ассета
 
 ### Спринт 1 — Foundation (3 дня)
-- [ ] Сцены Bootstrap, Main
-- [ ] GameBootstrap, GameManager
-- [ ] SaveData, SaveManager (JSON)
+- [x] Сцены Bootstrap, Main
+- [x] GameBootstrap, GameManager
+- [x] SaveData, SaveManager (JSON)
 - [ ] EventBus
-- [ ] Навигация между панелями
+- [x] Навигация между панелями
 
 ### Спринт 2 — Pet Core (3 дня)
-- [ ] PetSystem (Hunger, Energy, Mood, Health)
-- [ ] Падение параметров в реальном времени
-- [ ] Оффлайн прогресс
-- [ ] Смерть и воскрешение
-- [ ] Инвентарь (базовый)
+- [x] PetSystem (Hunger, Energy, Mood, Health)
+- [x] Падение параметров в реальном времени
+- [x] Оффлайн прогресс
+- [x] Смерть и воскрешение
+- [x] Инвентарь (базовый)
 
 ### Спринт 3 — Skills + Radar Chart (4 дня) — КРИТИЧЕСКИЙ
-- [ ] Skill Model, SkillSystem (без лимита)
-- [ ] Добавление/удаление навыков (удаление только 0%)
-- [ ] SkillPanel (скроллящийся список)
-- [ ] Radar Chart (ТОП-12) — полная реализация
-- [ ] Popup добавления навыка
+- [x] Skill Model, SkillSystem (без лимита)
+- [x] Добавление/удаление навыков (удаление только 0%)
+- [x] SkillPanel (скроллящийся список)
+- [x] Radar Chart (ТОП-12) — полная реализация
+- [x] Popup добавления навыка
 
 ### Спринт 4 — Focus System (4 дня)
-- [ ] FocusPanel (выбор навыка, длительности)
-- [ ] Таймер (корутина с unscaled time)
-- [ ] Пауза, досрочное завершение
-- [ ] Расчёт награды
-- [ ] Экран награды после фокуса
-- [ ] Применение прогресса навыка
+- [x] FocusPanel (выбор навыка, длительности)
+- [x] Таймер (корутина с unscaled time)
+- [x] Пауза, досрочное завершение
+- [x] Расчёт награды
+- [x] Экран награды после фокуса
+- [x] Применение прогресса навыка
 
 ### Спринт 5 — Missions + Routines (3 дня) — ОБНОВЛЁННЫЙ
-- [ ] MissionSystem
-- [ ] Два типа: SkillMission и Routine
-- [ ] Ежедневный сброс в 5:00
-- [ ] Выбор до 5 навыковых заданий
-- [ ] Рутины (10 предустановленных)
-- [ ] Создание своих заданий (навыковых и рутин)
-- [ ] Прогресс заданий
-- [ ] Бонус за все 5 навыковых заданий
+- [x] MissionSystem
+- [x] Два типа: SkillMission и Routine
+- [x] Ежедневный сброс в 5:00
+- [x] Выбор до 5 навыковых заданий
+- [x] Рутины (10 предустановленных)
+- [x] Создание своих заданий (навыковых и рутин)
+- [x] Прогресс заданий
+- [x] Бонус за все 5 навыковых заданий
 
 ### Спринт 6 — Shop + Inventory (2 дня)
 - [ ] ShopPanel (список товаров)
