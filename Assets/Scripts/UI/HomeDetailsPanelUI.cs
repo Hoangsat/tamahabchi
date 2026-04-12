@@ -115,7 +115,7 @@ public class HomeDetailsPanelUI : MonoBehaviour
 
     public string GetSelectedTabLabel()
     {
-        return GetTabLabel(selectedTab);
+        return HomeDetailsPresenter.GetTabLabel(selectedTab);
     }
 
     private void ClosePanel()
@@ -159,6 +159,11 @@ public class HomeDetailsPanelUI : MonoBehaviour
 
     private void RefreshUI()
     {
+        if (panelRoot != null && !panelRoot.activeSelf)
+        {
+            return;
+        }
+
         BuildUiIfNeeded();
         EnsurePanelLayering();
         ApplyScreenVisuals();
@@ -170,99 +175,36 @@ public class HomeDetailsPanelUI : MonoBehaviour
 
         if (gameManager == null)
         {
-            if (subtitleText != null)
-            {
-                subtitleText.text = "Pet profile unavailable";
-            }
-
-            if (contentTitleText != null)
-            {
-                contentTitleText.text = GetTabLabel(selectedTab);
-            }
-
-            if (contentBodyText != null)
-            {
-                contentBodyText.text = "GameManager missing.";
-            }
-
+            ApplyViewData(HomeDetailsPresenter.BuildUnavailable(selectedTab));
             UpdateTabSelection();
             return;
         }
 
-        PetStatusSummary summary = gameManager.GetPetStatusSummary();
+        ApplyViewData(gameManager.GetHomeDetailsView(selectedTab));
+        UpdateTabSelection();
+    }
+
+    private void ApplyViewData(HomeDetailsViewData viewData)
+    {
         if (subtitleText != null)
         {
-            subtitleText.text = $"{summary.headline}  •  Coins {gameManager.GetCurrentCoins()}";
+            subtitleText.text = viewData.Subtitle;
         }
 
         if (contentTitleText != null)
         {
-            contentTitleText.text = GetTabLabel(selectedTab);
+            contentTitleText.text = viewData.Title;
         }
 
         if (contentBodyText != null)
         {
-            contentBodyText.text = BuildBodyForSelectedTab(summary);
+            contentBodyText.text = viewData.Body;
         }
 
         if (footerNoteText != null)
         {
-            footerNoteText.text = selectedTab == HomeDetailsTab.Pet || selectedTab == HomeDetailsTab.Stats
-                ? "Scaffold panel inspired by the Home detail UX reference."
-                : "Placeholder tab. We can decide the real feature and architecture later.";
+            footerNoteText.text = viewData.Footer;
         }
-
-        UpdateTabSelection();
-    }
-
-    private string BuildBodyForSelectedTab(PetStatusSummary summary)
-    {
-        switch (selectedTab)
-        {
-            case HomeDetailsTab.Pet:
-                return BuildPetBody(summary);
-            case HomeDetailsTab.Stats:
-                return BuildStatsBody();
-            case HomeDetailsTab.Relic:
-                return "Relic tab scaffold.\n\nUse this slot to explore future passive item systems, collectible bonuses, or long-term progression.";
-            case HomeDetailsTab.Mastery:
-                return "Mastery tab scaffold.\n\nThis can later become a high-level growth tree, account progression layer, or focus mastery system.";
-            case HomeDetailsTab.Trait:
-                return "Trait tab scaffold.\n\nThis can later hold pet personality modifiers, strengths, weaknesses, or archetype-style bonuses.";
-            default:
-                return "Tab scaffold.";
-        }
-    }
-
-    private string BuildPetBody(PetStatusSummary summary)
-    {
-        int level = gameManager.progressionData != null ? gameManager.progressionData.level : 0;
-        int roomLevel = gameManager.roomData != null ? gameManager.roomData.roomLevel : 0;
-        int skillCount = gameManager.GetSkills().Count;
-
-        return
-            $"Headline: {summary.headline}\n" +
-            $"Guidance: {summary.guidance}\n\n" +
-            $"Player level: {level}\n" +
-            $"Room level: {roomLevel}\n" +
-            $"Tracked skills: {skillCount}\n\n" +
-            "This first tab is the flexible pet profile shell. We can later turn it into a richer character sheet, slime-style pet card, or avatar hub.";
-    }
-
-    private string BuildStatsBody()
-    {
-        PetData pet = gameManager.petData ?? new PetData();
-        ProgressionData progression = gameManager.progressionData ?? new ProgressionData();
-        RoomData room = gameManager.roomData ?? new RoomData();
-
-        return
-            $"Hunger: {pet.hunger:0}\n" +
-            $"Energy: {pet.energy:0}\n" +
-            $"Mood: {pet.mood:0}\n" +
-            $"Coins: {gameManager.GetCurrentCoins()}\n" +
-            $"XP: {progression.xp} / {gameManager.GetXpRequiredForNextLevel()}\n" +
-            $"Room level: {room.roomLevel}\n\n" +
-            "This tab can later become the full characteristic panel.";
     }
 
     private void SetStatus(string message)
@@ -296,25 +238,6 @@ public class HomeDetailsPanelUI : MonoBehaviour
                     : new Color(0.82f, 0.87f, 0.95f, 0.95f);
                 label.fontStyle = selected ? FontStyles.Bold : FontStyles.Normal;
             }
-        }
-    }
-
-    private string GetTabLabel(HomeDetailsTab tab)
-    {
-        switch (tab)
-        {
-            case HomeDetailsTab.Pet:
-                return "Pet";
-            case HomeDetailsTab.Stats:
-                return "Stats";
-            case HomeDetailsTab.Relic:
-                return "Relic";
-            case HomeDetailsTab.Mastery:
-                return "Mastery";
-            case HomeDetailsTab.Trait:
-                return "Trait";
-            default:
-                return tab.ToString();
         }
     }
 
@@ -473,7 +396,7 @@ public class HomeDetailsPanelUI : MonoBehaviour
 
     private void CreateTabButton(RectTransform parent, HomeDetailsTab tab)
     {
-        Button button = CreateActionButton(parent, $"{tab}TabButton", GetTabLabel(tab), () => SelectTab(tab));
+        Button button = CreateActionButton(parent, $"{tab}TabButton", HomeDetailsPresenter.GetTabLabel(tab), () => SelectTab(tab));
         LayoutElement layout = button.gameObject.AddComponent<LayoutElement>();
         layout.preferredHeight = 52f;
         layout.flexibleWidth = 1f;

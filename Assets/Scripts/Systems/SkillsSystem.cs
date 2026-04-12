@@ -6,9 +6,17 @@ public sealed class SkillProgressResult
 {
     public bool success;
     public string skillId = string.Empty;
-    public float deltaApplied;
-    public float previousPercent;
-    public float newPercent;
+    public int deltaSP;
+    public int previousTotalSP;
+    public int newTotalSP;
+    public int previousLevel;
+    public int newLevel;
+    public float previousAxisPercent;
+    public float newAxisPercent;
+    public float previousProgressInLevel01;
+    public float newProgressInLevel01;
+    public bool leveledUp;
+    public int levelsGained;
     public bool becameGolden;
     public bool isGolden;
 }
@@ -29,6 +37,30 @@ public class SkillsSystem
     {
         EnsureData();
         return new List<SkillEntry>(skillsData.skills);
+    }
+
+    public List<SkillProgressionViewData> GetSkillProgressionViews()
+    {
+        EnsureData();
+        List<SkillProgressionViewData> views = new List<SkillProgressionViewData>(skillsData.skills.Count);
+        for (int i = 0; i < skillsData.skills.Count; i++)
+        {
+            SkillEntry skill = skillsData.skills[i];
+            if (skill == null)
+            {
+                continue;
+            }
+
+            views.Add(BuildProgressionView(skill));
+        }
+
+        return views;
+    }
+
+    public SkillProgressionViewData GetSkillProgressionView(string id)
+    {
+        SkillEntry skill = GetSkillById(id);
+        return skill != null ? BuildProgressionView(skill) : null;
     }
 
     public SkillEntry GetSkillById(string id)
@@ -80,6 +112,12 @@ public class SkillsSystem
 
     public SkillEntry AddSkill(string name, string icon)
     {
+        string archetypeId = SkillArchetypeCatalog.ResolveArchetypeIdFromLegacyIcon(icon);
+        return AddSkillWithArchetype(name, archetypeId);
+    }
+
+    public SkillEntry AddSkillWithArchetype(string name, string archetypeId)
+    {
         EnsureData();
 
         string normalizedName = NormalizeName(name);
@@ -88,11 +126,16 @@ public class SkillsSystem
             return null;
         }
 
+        string normalizedArchetypeId = SkillArchetypeCatalog.NormalizeArchetypeId(archetypeId);
+
         SkillEntry skill = new SkillEntry
         {
             id = "skill_" + Guid.NewGuid().ToString("N"),
             name = normalizedName,
-            icon = (icon ?? string.Empty).Trim(),
+            icon = SkillArchetypeCatalog.GetCanonicalIcon(normalizedArchetypeId),
+            archetypeId = normalizedArchetypeId,
+            totalSP = 0,
+            decayDebtSP = 0,
             percent = 0f,
             isGolden = false,
             bonusExpMultiplier = 0f,
@@ -104,16 +147,35 @@ public class SkillsSystem
         return skill;
     }
 
+    public bool ChangeSkillArchetype(string skillId, string archetypeId)
+    {
+        SkillEntry skill = GetSkillById(skillId);
+        if (skill == null)
+        {
+            return false;
+        }
+
+        string normalizedArchetypeId = SkillArchetypeCatalog.NormalizeArchetypeId(archetypeId);
+        if (!SkillArchetypeCatalog.IsSelectable(normalizedArchetypeId))
+        {
+            return false;
+        }
+
+        skill.archetypeId = normalizedArchetypeId;
+        skill.icon = SkillArchetypeCatalog.GetCanonicalIcon(normalizedArchetypeId);
+        return true;
+    }
+
     public bool CanRemoveSkill(string id)
     {
         SkillEntry skill = GetSkillById(id);
-        return skill != null && skill.percent <= 0f;
+        return skill != null && skill.totalSP <= 0;
     }
 
     public bool RemoveSkill(string id)
     {
         SkillEntry skill = GetSkillById(id);
-        if (skill == null || skill.percent > 0f)
+        if (skill == null || skill.totalSP > 0)
         {
             return false;
         }
@@ -121,7 +183,7 @@ public class SkillsSystem
         return skillsData.skills.Remove(skill);
     }
 
-    public SkillProgressResult ApplyFocusProgress(string id, float amount, float completedDurationSeconds, string localFocusDate, float goldenBonusIncrement)
+    public SkillProgressResult ApplySkillPoints(string id, int amount, float completedDurationSeconds, string localFocusDate, float goldenBonusIncrement)
     {
         SkillProgressResult result = new SkillProgressResult
         {
@@ -129,60 +191,56 @@ public class SkillsSystem
         };
 
         SkillEntry skill = GetSkillById(id);
-        if (skill == null || amount <= 0f)
+        if (skill == null || amount <= 0)
         {
             return result;
         }
 
-        float previousPercent = skill.percent;
-        float newPercent = Mathf.Clamp(skill.percent + amount, 0f, 100f);
+        SkillProgressionViewData before = BuildProgressionView(skill);
+        int previousTotalSP = skill.totalSP;
+        int newTotalSP = SkillProgressionModel.ClampTotalSP(previousTotalSP + amount);
 
-        skill.percent = newPercent;
+        skill.totalSP = newTotalSP;
         skill.totalFocusMinutes += Mathf.Max(0, Mathf.CeilToInt(completedDurationSeconds / 60f));
         skill.lastFocusDate = localFocusDate ?? string.Empty;
 
-        bool becameGolden = !skill.isGolden && previousPercent < 100f && newPercent >= 100f;
+        bool becameGolden = !skill.isGolden && SkillProgressionModel.IsMaxed(newTotalSP);
         if (becameGolden)
         {
             skill.isGolden = true;
             skill.bonusExpMultiplier = Mathf.Max(skill.bonusExpMultiplier, goldenBonusIncrement);
         }
+        else
+        {
+            skill.isGolden = SkillProgressionModel.IsMaxed(newTotalSP);
+        }
 
+        SkillProgressionViewData after = BuildProgressionView(skill);
         result.success = true;
-        result.deltaApplied = newPercent - previousPercent;
-        result.previousPercent = previousPercent;
-        result.newPercent = newPercent;
+        result.deltaSP = newTotalSP - previousTotalSP;
+        result.previousTotalSP = previousTotalSP;
+        result.newTotalSP = newTotalSP;
+        result.previousLevel = before.level;
+        result.newLevel = after.level;
+        result.previousAxisPercent = before.axisPercent;
+        result.newAxisPercent = after.axisPercent;
+        result.previousProgressInLevel01 = before.progressInLevel01;
+        result.newProgressInLevel01 = after.progressInLevel01;
+        result.leveledUp = after.level > before.level;
+        result.levelsGained = Mathf.Max(0, after.level - before.level);
         result.becameGolden = becameGolden;
-        result.isGolden = skill.isGolden;
+        result.isGolden = after.isGolden;
         return result;
     }
 
-    public float CalculateProgressFromFocusDuration(
-        float durationSeconds,
-        int petLevel,
-        float petMoodPercent,
-        float skillMinutesPerStep,
-        float skillLevelMultiplierStep,
-        float skillMoodBaseBonus,
-        float skillMoodScale)
+    public int CalculateSkillPointsFromFocusDuration(float durationSeconds)
     {
-        if (durationSeconds <= 0f || skillMinutesPerStep <= 0f)
+        if (durationSeconds <= 0f)
         {
-            return 0f;
+            return 0;
         }
 
-        float minutes = durationSeconds / 60f;
-        float clampedMood = Mathf.Clamp(petMoodPercent, 0f, 100f);
-        float levelMultiplier = GetPetLevelMultiplier(petLevel, skillLevelMultiplierStep);
-        float baseGain = (minutes / skillMinutesPerStep) * levelMultiplier;
-        float moodBonus = skillMoodBaseBonus + (clampedMood * skillMoodScale);
-
-        if (moodBonus <= 0f)
-        {
-            return 0f;
-        }
-
-        return Mathf.Max(0f, baseGain * moodBonus);
+        return Mathf.Max(0, Mathf.FloorToInt(durationSeconds / 60f));
     }
 
     public int ApplyFocusXpBonus(string skillId, int baseXp)
@@ -213,6 +271,89 @@ public class SkillsSystem
         return skill != null && skill.isGolden;
     }
 
+    public List<SkillEntry> GetSkillsOrderedByAxisPercent()
+    {
+        EnsureData();
+        List<SkillEntry> ordered = new List<SkillEntry>(skillsData.skills);
+        ordered.Sort(CompareByAxisPercent);
+        return ordered;
+    }
+
+    private SkillProgressionViewData BuildProgressionView(SkillEntry skill)
+    {
+        int totalSP = SkillProgressionModel.ClampTotalSP(skill != null ? skill.totalSP : 0);
+        int decayDebtSP = Mathf.Clamp(skill != null ? skill.decayDebtSP : 0, 0, totalSP);
+        int effectiveSP = GetEffectiveSP(totalSP, decayDebtSP);
+        int level = SkillProgressionModel.GetLevel(totalSP);
+        int requiredSPForNextLevel = SkillProgressionModel.GetRequiredSPForNextLevel(level);
+        float progressInLevel01 = SkillProgressionModel.GetProgressInLevel01(totalSP);
+        float axisPercent = SkillProgressionModel.GetAxisPercent(effectiveSP);
+        bool isMaxed = SkillProgressionModel.IsMaxed(totalSP);
+
+        return new SkillProgressionViewData
+        {
+            id = skill != null ? skill.id ?? string.Empty : string.Empty,
+            name = skill != null ? skill.name ?? string.Empty : string.Empty,
+            icon = skill != null ? skill.icon ?? string.Empty : string.Empty,
+            archetypeId = skill != null ? skill.archetypeId ?? string.Empty : string.Empty,
+            totalSP = totalSP,
+            decayDebtSP = decayDebtSP,
+            effectiveSP = effectiveSP,
+            level = level,
+            progressInLevel = isMaxed ? requiredSPForNextLevel : SkillProgressionModel.GetProgressInLevel(totalSP),
+            requiredSPForNextLevel = requiredSPForNextLevel,
+            progressInLevel01 = progressInLevel01,
+            progressToNextLevelPercent = isMaxed ? 100f : progressInLevel01 * 100f,
+            axisPercent = axisPercent,
+            axisFill01 = axisPercent / 100f,
+            isGolden = skill != null && skill.isGolden,
+            isMaxed = isMaxed,
+            totalFocusMinutes = skill != null ? Mathf.Max(0, skill.totalFocusMinutes) : 0,
+            lastFocusDate = skill != null ? skill.lastFocusDate ?? string.Empty : string.Empty
+        };
+    }
+
+    private int CompareByAxisPercent(SkillEntry left, SkillEntry right)
+    {
+        float leftAxis = left != null ? SkillProgressionModel.GetAxisPercent(GetEffectiveSP(left)) : 0f;
+        float rightAxis = right != null ? SkillProgressionModel.GetAxisPercent(GetEffectiveSP(right)) : 0f;
+        int axisComparison = rightAxis.CompareTo(leftAxis);
+        if (axisComparison != 0)
+        {
+            return axisComparison;
+        }
+
+        int leftEffectiveSP = left != null ? GetEffectiveSP(left) : 0;
+        int rightEffectiveSP = right != null ? GetEffectiveSP(right) : 0;
+        int effectiveSpComparison = rightEffectiveSP.CompareTo(leftEffectiveSP);
+        if (effectiveSpComparison != 0)
+        {
+            return effectiveSpComparison;
+        }
+
+        string leftDate = left != null ? left.lastFocusDate ?? string.Empty : string.Empty;
+        string rightDate = right != null ? right.lastFocusDate ?? string.Empty : string.Empty;
+        return string.Compare(rightDate, leftDate, StringComparison.Ordinal);
+    }
+
+    public int GetEffectiveSP(string id)
+    {
+        SkillEntry skill = GetSkillById(id);
+        return GetEffectiveSP(skill);
+    }
+
+    public int GetEffectiveSP(SkillEntry skill)
+    {
+        return skill == null
+            ? 0
+            : GetEffectiveSP(SkillProgressionModel.ClampTotalSP(skill.totalSP), Mathf.Clamp(skill.decayDebtSP, 0, SkillProgressionModel.ClampTotalSP(skill.totalSP)));
+    }
+
+    public int GetEffectiveSP(int totalSP, int decayDebtSP)
+    {
+        return Mathf.Max(0, SkillProgressionModel.ClampTotalSP(totalSP) - Mathf.Clamp(decayDebtSP, 0, SkillProgressionModel.ClampTotalSP(totalSP)));
+    }
+
     private void EnsureData()
     {
         if (skillsData == null)
@@ -239,8 +380,23 @@ public class SkillsSystem
 
             skill.id = string.IsNullOrWhiteSpace(skill.id) ? "skill_" + Guid.NewGuid().ToString("N") : skill.id.Trim();
             skill.name = skill.name ?? string.Empty;
-            skill.icon = skill.icon ?? string.Empty;
-            skill.percent = Mathf.Clamp(skill.percent, 0f, 100f);
+            if (string.IsNullOrWhiteSpace(skill.archetypeId))
+            {
+                skill.archetypeId = SkillArchetypeCatalog.ResolveArchetypeIdFromLegacyIcon(skill.icon);
+            }
+
+            skill.archetypeId = SkillArchetypeCatalog.NormalizeArchetypeId(skill.archetypeId);
+            skill.icon = SkillArchetypeCatalog.GetCanonicalIcon(skill.archetypeId);
+
+            if (skill.totalSP <= 0 && skill.percent > 0f)
+            {
+                skill.totalSP = SkillProgressionModel.GetTotalSPForAxisPercent(skill.percent);
+            }
+
+            skill.totalSP = SkillProgressionModel.ClampTotalSP(skill.totalSP);
+            skill.decayDebtSP = Mathf.Clamp(skill.decayDebtSP, 0, skill.totalSP);
+            skill.percent = 0f;
+            skill.isGolden = SkillProgressionModel.IsMaxed(skill.totalSP);
             if (skill.bonusExpMultiplier < 0f)
             {
                 skill.bonusExpMultiplier = 0f;

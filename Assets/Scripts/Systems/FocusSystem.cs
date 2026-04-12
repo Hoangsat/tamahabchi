@@ -38,7 +38,7 @@ public class FocusSystem
 
         float now = Time.realtimeSinceStartup;
         float realtimeDelta = lastRealtimeMark >= 0f ? now - lastRealtimeMark : 0f;
-        float appliedDelta = Mathf.Max(realtimeDelta, Mathf.Max(0f, deltaTime));
+        float appliedDelta = realtimeDelta > 0.0001f ? realtimeDelta : Mathf.Max(0f, deltaTime);
         elapsedSeconds = Mathf.Clamp(elapsedSeconds + appliedDelta, 0f, duration);
         lastRealtimeMark = now;
 

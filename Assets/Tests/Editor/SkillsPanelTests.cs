@@ -23,43 +23,6 @@ public class SkillsPanelTests
     }
 
     [Test]
-    public void BuildChartSkills_PreservesSourceOrderForStableAxes()
-    {
-        GameObject panelObject = new GameObject("SkillsPanel");
-        try
-        {
-            SkillsPanelUI panel = panelObject.AddComponent<SkillsPanelUI>();
-            MethodInfo method = typeof(SkillsPanelUI).GetMethod("BuildChartSkills", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.NotNull(method);
-
-            List<SkillEntry> source = new List<SkillEntry>
-            {
-                new SkillEntry { id = "skill_alpha", name = "Alpha", percent = 5f },
-                new SkillEntry { id = "skill_beta", name = "Beta", percent = 90f },
-                new SkillEntry { id = "skill_gamma", name = "Gamma", percent = 25f }
-            };
-
-            IEnumerable result = method.Invoke(panel, new object[] { source }) as IEnumerable;
-            Assert.NotNull(result);
-
-            List<string> actualIds = new List<string>();
-            foreach (object item in result)
-            {
-                FieldInfo skillField = item.GetType().GetField("Skill", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-                Assert.NotNull(skillField);
-                SkillEntry skill = skillField.GetValue(item) as SkillEntry;
-                actualIds.Add(skill != null ? skill.id : string.Empty);
-            }
-
-            CollectionAssert.AreEqual(new[] { "skill_alpha", "skill_beta", "skill_gamma" }, actualIds);
-        }
-        finally
-        {
-            Object.DestroyImmediate(panelObject);
-        }
-    }
-
-    [Test]
     public void HandleSkillProgressAdded_DoesNotShowPopupWhenPanelIsHidden()
     {
         SkillsSystem skillsSystem = new SkillsSystem();
@@ -67,7 +30,7 @@ public class SkillsPanelTests
         {
             skills = new List<SkillEntry>
             {
-                new SkillEntry { id = "skill_hidden", name = "Hidden", icon = "DEV", percent = 10f }
+                new SkillEntry { id = "skill_hidden", name = "Hidden", icon = "DEV", totalSP = 100 }
             }
         });
 
@@ -90,7 +53,18 @@ public class SkillsPanelTests
 
             MethodInfo method = typeof(SkillsPanelUI).GetMethod("HandleSkillProgressAdded", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(method);
-            method.Invoke(panel, new object[] { "skill_hidden", 5f, 15f });
+            method.Invoke(panel, new object[]
+            {
+                new SkillProgressResult
+                {
+                    skillId = "skill_hidden",
+                    deltaSP = 15,
+                    previousLevel = 0,
+                    newLevel = 1,
+                    previousAxisPercent = 9f,
+                    newAxisPercent = 10.5f
+                }
+            });
 
             Assert.False(panel.skillGainPopupRoot.activeSelf);
             Assert.AreEqual(0f, panel.skillGainPopupCanvasGroup.alpha, 0.001f);
@@ -110,8 +84,8 @@ public class SkillsPanelTests
         {
             skills = new List<SkillEntry>
             {
-                new SkillEntry { id = "skill_one", name = "One", icon = "DEV", percent = 10f },
-                new SkillEntry { id = "skill_two", name = "Two", icon = "ART", percent = 20f }
+                new SkillEntry { id = "skill_one", name = "One", icon = "DEV", totalSP = 100 },
+                new SkillEntry { id = "skill_two", name = "Two", icon = "ART", totalSP = 200 }
             }
         });
 
@@ -156,8 +130,8 @@ public class SkillsPanelTests
         {
             skills = new List<SkillEntry>
             {
-                new SkillEntry { id = "skill_one", name = "One", icon = "DEV", percent = 10f },
-                new SkillEntry { id = "skill_two", name = "Two", icon = "ART", percent = 20f }
+                new SkillEntry { id = "skill_one", name = "One", icon = "DEV", totalSP = 100 },
+                new SkillEntry { id = "skill_two", name = "Two", icon = "ART", totalSP = 200 }
             }
         });
 
@@ -251,10 +225,8 @@ public class SkillsPanelTests
 
             typeof(SkillsPanelUI).GetField("pendingFeedbackSkillId", BindingFlags.Instance | BindingFlags.NonPublic)
                 .SetValue(panel, "skill_test");
-            typeof(SkillsPanelUI).GetField("pendingFeedbackDelta", BindingFlags.Instance | BindingFlags.NonPublic)
-                .SetValue(panel, 5f);
-            typeof(SkillsPanelUI).GetField("pendingFeedbackNewPercent", BindingFlags.Instance | BindingFlags.NonPublic)
-                .SetValue(panel, 25f);
+            typeof(SkillsPanelUI).GetField("pendingFeedbackResult", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(panel, new SkillProgressResult { skillId = "skill_test", deltaSP = 15, newLevel = 2 });
 
             MethodInfo awakeMethod = typeof(SkillsPanelUI).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(awakeMethod);
@@ -266,8 +238,7 @@ public class SkillsPanelTests
             Assert.False(panel.skillGainPopupRoot.activeSelf);
             Assert.AreEqual(0f, panel.skillGainPopupCanvasGroup.alpha, 0.001f);
             Assert.AreEqual(string.Empty, typeof(SkillsPanelUI).GetField("pendingFeedbackSkillId", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(panel));
-            Assert.AreEqual(0f, (float)typeof(SkillsPanelUI).GetField("pendingFeedbackDelta", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(panel), 0.001f);
-            Assert.AreEqual(0f, (float)typeof(SkillsPanelUI).GetField("pendingFeedbackNewPercent", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(panel), 0.001f);
+            Assert.IsNull(typeof(SkillsPanelUI).GetField("pendingFeedbackResult", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(panel));
         }
         finally
         {
@@ -283,7 +254,7 @@ public class SkillsPanelTests
         {
             skills = new List<SkillEntry>
             {
-                new SkillEntry { id = "skill_existing", name = "Coding", icon = "DEV", percent = 10f }
+                new SkillEntry { id = "skill_existing", name = "Coding", icon = "DEV", totalSP = 100 }
             }
         });
 
@@ -335,19 +306,35 @@ public class SkillsPanelTests
             MethodInfo method = typeof(SkillsPanelUI).GetMethod("RefreshHeroBlock", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(method);
 
-            List<SkillEntry> skills = new List<SkillEntry>
+            SkillProgressionViewData heroView = new SkillProgressionViewData
             {
-                new SkillEntry { id = "skill_alpha", name = "Alpha", icon = "DEV", percent = 20f, totalFocusMinutes = 25 },
-                new SkillEntry { id = "skill_beta", name = "Beta", icon = "ART", percent = 82f, totalFocusMinutes = 90 }
+                id = "skill_beta",
+                level = SkillProgressionModel.GetLevel(900),
+                progressInLevel01 = SkillProgressionModel.GetProgressInLevel01(900),
+                progressToNextLevelPercent = SkillProgressionModel.GetProgressInLevel01(900) * 100f,
+                axisPercent = SkillProgressionModel.GetAxisPercent(900),
+                axisFill01 = SkillProgressionModel.GetAxisPercent(900) / 100f,
+                totalFocusMinutes = 90
             };
+            SkillsHeroState heroState = new SkillsHeroState(
+                new SkillEntry { id = "skill_beta", name = "Beta", icon = "ART", totalSP = 900, totalFocusMinutes = 90 },
+                heroView,
+                true,
+                "Current Focus",
+                "Current Focus: Beta - Lv." + heroView.level,
+                "Beta",
+                "Selected Focus | Axis 90% | 90m logged",
+                $"LEVEL {heroView.level}\n{heroView.progressToNextLevelPercent:0.#}% to Lv.{Mathf.Min(heroView.level + 1, SkillProgressionModel.MaxLevel)}",
+                "Progress snapshot",
+                "Start Focus");
 
-            method.Invoke(panel, new object[] { skills, "skill_beta" });
+            method.Invoke(panel, new object[] { heroState });
 
             Assert.AreEqual("Beta", panel.heroSkillNameText.text);
             StringAssert.Contains("Selected", panel.heroSkillMetaText.text);
-            Assert.AreEqual("82% tracked", panel.heroProgressText.text);
+            StringAssert.Contains("Lv.", panel.heroProgressText.text);
             Assert.AreEqual("Start Focus", panel.heroActionButtonText.text);
-            Assert.Greater(panel.heroProgressFillImage.fillAmount, 0.8f);
+            Assert.Greater(panel.heroProgressFillImage.fillAmount, 0f);
         }
         finally
         {
@@ -373,13 +360,28 @@ public class SkillsPanelTests
             MethodInfo method = typeof(SkillsPanelUI).GetMethod("RefreshHeroBlock", BindingFlags.Instance | BindingFlags.NonPublic);
             Assert.NotNull(method);
 
-            List<SkillEntry> skills = new List<SkillEntry>
+            SkillProgressionViewData heroView = new SkillProgressionViewData
             {
-                new SkillEntry { id = "skill_alpha", name = "Alpha", icon = "DEV", percent = 35f, totalFocusMinutes = 10 },
-                new SkillEntry { id = "skill_beta", name = "Beta", icon = "ART", percent = 60f, totalFocusMinutes = 5 }
+                id = "skill_beta",
+                level = SkillProgressionModel.GetLevel(600),
+                progressToNextLevelPercent = SkillProgressionModel.GetProgressInLevel01(600) * 100f,
+                axisPercent = SkillProgressionModel.GetAxisPercent(600),
+                axisFill01 = SkillProgressionModel.GetAxisPercent(600) / 100f,
+                totalFocusMinutes = 5
             };
+            SkillsHeroState heroState = new SkillsHeroState(
+                new SkillEntry { id = "skill_beta", name = "Beta", icon = "ART", totalSP = 600, totalFocusMinutes = 5 },
+                heroView,
+                false,
+                "Top Skill",
+                "Current Focus: Beta - Lv." + heroView.level,
+                "Beta",
+                "Recommended Focus | Axis 60% | 5m logged",
+                $"LEVEL {heroView.level}\n{heroView.progressToNextLevelPercent:0.#}% to Lv.{Mathf.Min(heroView.level + 1, SkillProgressionModel.MaxLevel)}",
+                "Strong candidate for your next focus run.",
+                "Focus This");
 
-            method.Invoke(panel, new object[] { skills, string.Empty });
+            method.Invoke(panel, new object[] { heroState });
 
             Assert.AreEqual("Beta", panel.heroSkillNameText.text);
             StringAssert.Contains("Recommended", panel.heroSkillMetaText.text);
@@ -419,15 +421,21 @@ public class SkillsPanelTests
             awakeMethod.Invoke(row, null);
 
             row.Bind(
-                new SkillEntry { id = "skill_alpha", name = "VeryLongSkillName", icon = "DEV", percent = 25f },
+                new SkillEntry { id = "skill_alpha", name = "VeryLongSkillName", icon = "DEV", totalSP = 250 },
+                new SkillProgressionViewData { id = "skill_alpha", level = 3, progressToNextLevelPercent = 25f, totalSP = 250 },
                 Color.cyan,
                 false,
+                "Логика и мышление",
+                _ => { },
                 _ => { },
                 _ => { });
 
             Assert.AreEqual(TextWrappingModes.NoWrap, row.iconText.textWrappingMode);
             Assert.AreEqual(TextWrappingModes.NoWrap, row.nameText.textWrappingMode);
             Assert.AreEqual(TextWrappingModes.NoWrap, row.percentText.textWrappingMode);
+            Assert.NotNull(row.typeButton);
+            Assert.NotNull(row.typeButtonText);
+            Assert.AreEqual("Логика и мышление", row.typeButtonText.text);
             Assert.True(layoutGroup.childControlWidth);
             Assert.True(layoutGroup.childControlHeight);
         }
@@ -435,5 +443,344 @@ public class SkillsPanelTests
         {
             Object.DestroyImmediate(rowObject);
         }
+    }
+
+    [Test]
+    public void ShowPanel_UsesCompactLayoutOnShortCanvas()
+    {
+        GameObject canvasObject = new GameObject("Canvas", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
+        GameObject panelObject = new GameObject("SkillsPanelUIRoot", typeof(RectTransform));
+        try
+        {
+            RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
+            canvasRect.sizeDelta = new Vector2(720f, 720f);
+            panelObject.transform.SetParent(canvasObject.transform, false);
+
+            SkillsPanelUI panel = panelObject.AddComponent<SkillsPanelUI>();
+            panel.panelRoot = CreateSkillsPanelHierarchy(panelObject.transform as RectTransform, panel);
+
+            MethodInfo awakeMethod = typeof(SkillsPanelUI).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(awakeMethod);
+            awakeMethod.Invoke(panel, null);
+
+            panel.ShowPanel();
+            Canvas.ForceUpdateCanvases();
+
+            LayoutElement heroLayout = panel.panelRoot.transform.Find("SkillsCard/HeroCard").GetComponent<LayoutElement>();
+            Assert.AreEqual(224f * 0.86f, heroLayout.preferredHeight, 0.01f);
+
+            LayoutElement chartLayout = panel.panelRoot.transform.Find("SkillsCard/ChartContainer").GetComponent<LayoutElement>();
+            Assert.AreEqual(408f * 0.84f, chartLayout.preferredHeight, 0.01f);
+
+            LayoutElement inputLayout = panel.panelRoot.transform.Find("SkillsCard/SkillNameInput").GetComponent<LayoutElement>();
+            Assert.AreEqual(60f * 0.90f, inputLayout.preferredHeight, 0.01f);
+
+            HorizontalLayoutGroup iconRowLayout = panel.panelRoot.transform.Find("SkillsCard/IconRow").GetComponent<HorizontalLayoutGroup>();
+            Assert.AreEqual(10f * 0.80f, iconRowLayout.spacing, 0.01f);
+
+            Assert.AreEqual(32f * 0.88f, panel.heroSkillNameText.fontSize, 0.01f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(panelObject);
+            Object.DestroyImmediate(canvasObject);
+        }
+    }
+
+    [Test]
+    public void SkillRow_Bind_UsesCompactSizingOnShortCanvas()
+    {
+        GameObject canvasObject = new GameObject("Canvas", typeof(RectTransform), typeof(Canvas));
+        GameObject rowObject = new GameObject("SkillRow", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(LayoutElement));
+        try
+        {
+            RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
+            canvasRect.sizeDelta = new Vector2(720f, 720f);
+
+            rowObject.transform.SetParent(canvasObject.transform, false);
+            LayoutElement rowLayout = rowObject.GetComponent<LayoutElement>();
+            rowLayout.preferredHeight = 60f;
+
+            HorizontalLayoutGroup rowLayoutGroup = rowObject.GetComponent<HorizontalLayoutGroup>();
+            rowLayoutGroup.spacing = 10f;
+
+            SkillRowUI row = rowObject.AddComponent<SkillRowUI>();
+            row.backgroundImage = rowObject.GetComponent<Image>();
+            row.colorMarkerImage = new GameObject("ColorMarker", typeof(RectTransform), typeof(Image)).GetComponent<Image>();
+            row.colorMarkerImage.transform.SetParent(rowObject.transform, false);
+            row.iconText = CreateText("IconText", rowObject.transform, 24f);
+            row.nameText = CreateText("NameText", rowObject.transform, 18f);
+            row.percentText = CreateText("PercentText", rowObject.transform, 16f);
+            row.selectButton = CreateButton("SelectButton", rowObject.transform, out TextMeshProUGUI selectLabel, 18f);
+            row.selectButtonText = selectLabel;
+            row.removeButton = CreateButton("RemoveButton", rowObject.transform, out TextMeshProUGUI removeLabel, 18f);
+            row.removeButtonText = removeLabel;
+
+            MethodInfo awakeMethod = typeof(SkillRowUI).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(awakeMethod);
+            awakeMethod.Invoke(row, null);
+
+            row.Bind(
+                new SkillEntry { id = "skill_one", name = "Coding", icon = "DEV", totalSP = 100 },
+                new SkillProgressionViewData
+                {
+                    id = "skill_one",
+                    level = 1,
+                    progressToNextLevelPercent = 50f,
+                    progressInLevel = 10,
+                    requiredSPForNextLevel = 20,
+                    totalSP = 100
+                },
+                Color.cyan,
+                false,
+                "Логика и мышление",
+                _ => { },
+                _ => { },
+                _ => { });
+
+            Assert.AreEqual(60f * 0.88f, rowLayout.preferredHeight, 0.01f);
+            Assert.AreEqual(10f * 0.85f, rowLayoutGroup.spacing, 0.01f);
+            Assert.AreEqual(14f * 0.86f, row.iconText.fontSize, 0.01f);
+            Assert.AreEqual(18f * 0.86f, row.selectButtonText.fontSize, 0.01f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(rowObject);
+            Object.DestroyImmediate(canvasObject);
+        }
+    }
+
+    [Test]
+    public void ShowPanel_CreatesArchetypeCardsAndUsesDefaultSelection()
+    {
+        GameObject managerObject = new GameObject("GameManager");
+        GameObject panelObject = new GameObject("SkillsPanelUIRoot", typeof(RectTransform));
+        try
+        {
+            SkillsData data = new SkillsData();
+            GameManager manager = managerObject.AddComponent<GameManager>();
+            manager.skillsData = data;
+
+            SkillsSystem skillsSystem = new SkillsSystem();
+            skillsSystem.Init(data);
+            typeof(GameManager)
+                .GetField("skillsSystem", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(manager, skillsSystem);
+
+            SkillsPanelUI panel = panelObject.AddComponent<SkillsPanelUI>();
+            panel.panelRoot = CreateSkillsPanelHierarchy(panelObject.transform as RectTransform, panel);
+            panel.SetGameManager(manager);
+
+            MethodInfo awakeMethod = typeof(SkillsPanelUI).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.NotNull(awakeMethod);
+            awakeMethod.Invoke(panel, null);
+
+            panel.skillNameInput.text = "Python";
+            panel.ShowPanel();
+
+            Transform picker = panel.panelRoot.transform.Find("SkillsCard/ArchetypePicker");
+            Assert.NotNull(picker);
+            Assert.AreEqual(SkillArchetypeCatalog.GetPlayerSelectableDefinitions().Count, picker.childCount);
+            Assert.True(panel.addSkillButton.interactable);
+
+            string selectedArchetypeId = (string)typeof(SkillsPanelUI)
+                .GetField("selectedCreateArchetypeId", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(panel);
+            Assert.AreEqual(SkillArchetypeCatalog.Logic, selectedArchetypeId);
+        }
+        finally
+        {
+            Object.DestroyImmediate(panelObject);
+            Object.DestroyImmediate(managerObject);
+        }
+    }
+
+    [Test]
+    public void ConfirmArchetypeEdit_UpdatesSkillAndHeroIcon()
+    {
+        GameObject managerObject = new GameObject("GameManager");
+        GameObject panelObject = new GameObject("SkillsPanelUIRoot", typeof(RectTransform));
+        try
+        {
+            SkillsData data = new SkillsData
+            {
+                skills =
+                {
+                    new SkillEntry
+                    {
+                        id = "skill_code",
+                        name = "Coding",
+                        icon = "MTH",
+                        archetypeId = SkillArchetypeCatalog.Logic,
+                        totalSP = 300
+                    }
+                }
+            };
+
+            GameManager manager = managerObject.AddComponent<GameManager>();
+            manager.skillsData = data;
+
+            SkillsSystem skillsSystem = new SkillsSystem();
+            skillsSystem.Init(data);
+            typeof(GameManager)
+                .GetField("skillsSystem", BindingFlags.Instance | BindingFlags.NonPublic)
+                .SetValue(manager, skillsSystem);
+
+            SkillsPanelUI panel = panelObject.AddComponent<SkillsPanelUI>();
+            panel.panelRoot = CreateSkillsPanelHierarchy(panelObject.transform as RectTransform, panel);
+            panel.SetGameManager(manager);
+
+            MethodInfo awakeMethod = typeof(SkillsPanelUI).GetMethod("Awake", BindingFlags.Instance | BindingFlags.NonPublic);
+            awakeMethod.Invoke(panel, null);
+            panel.ShowPanel();
+
+            MethodInfo openPopupMethod = typeof(SkillsPanelUI).GetMethod("OnChangeSkillType", BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo selectPopupMethod = typeof(SkillsPanelUI).GetMethod("OnSelectEditArchetype", BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo confirmMethod = typeof(SkillsPanelUI).GetMethod("ConfirmArchetypeEdit", BindingFlags.Instance | BindingFlags.NonPublic);
+
+            Assert.NotNull(openPopupMethod);
+            Assert.NotNull(selectPopupMethod);
+            Assert.NotNull(confirmMethod);
+
+            openPopupMethod.Invoke(panel, new object[] { "skill_code" });
+
+            string pendingArchetypeId = (string)typeof(SkillsPanelUI)
+                .GetField("pendingEditArchetypeId", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(panel);
+            Assert.AreEqual(SkillArchetypeCatalog.Logic, pendingArchetypeId);
+
+            selectPopupMethod.Invoke(panel, new object[] { SkillArchetypeCatalog.Music });
+            confirmMethod.Invoke(panel, null);
+
+            SkillEntry updatedSkill = manager.GetSkillById("skill_code");
+            Assert.NotNull(updatedSkill);
+            Assert.AreEqual(SkillArchetypeCatalog.Music, updatedSkill.archetypeId);
+            Assert.AreEqual("MSC", updatedSkill.icon);
+            Assert.AreEqual("MSC", panel.heroSkillIconText.text);
+        }
+        finally
+        {
+            Object.DestroyImmediate(panelObject);
+            Object.DestroyImmediate(managerObject);
+        }
+    }
+
+    private static GameObject CreateSkillsPanelHierarchy(RectTransform parent, SkillsPanelUI panel)
+    {
+        GameObject panelRoot = new GameObject("SkillsPanel", typeof(RectTransform), typeof(Image));
+        panelRoot.transform.SetParent(parent, false);
+
+        GameObject skillsCard = new GameObject("SkillsCard", typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
+        skillsCard.transform.SetParent(panelRoot.transform, false);
+        VerticalLayoutGroup skillsCardLayout = skillsCard.GetComponent<VerticalLayoutGroup>();
+        skillsCardLayout.spacing = 14f;
+        skillsCardLayout.padding = new RectOffset(22, 22, 20, 20);
+
+        GameObject headerRow = new GameObject("HeaderRow", typeof(RectTransform));
+        headerRow.transform.SetParent(skillsCard.transform, false);
+        new GameObject("TitleText", typeof(RectTransform)).transform.SetParent(headerRow.transform, false);
+
+        panel.closeButton = CreateButton("CloseButton", headerRow.transform, out _, 18f);
+        LayoutElement closeLayout = panel.closeButton.gameObject.AddComponent<LayoutElement>();
+        closeLayout.preferredWidth = 76f;
+        closeLayout.preferredHeight = 36f;
+
+        GameObject heroCard = new GameObject("HeroCard", typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        heroCard.transform.SetParent(skillsCard.transform, false);
+        heroCard.GetComponent<LayoutElement>().preferredHeight = 224f;
+        VerticalLayoutGroup heroLayout = heroCard.GetComponent<VerticalLayoutGroup>();
+        heroLayout.spacing = 12f;
+        heroLayout.padding = new RectOffset(18, 18, 14, 16);
+        panel.heroCardBackgroundImage = heroCard.GetComponent<Image>();
+
+        GameObject heroIconBadge = new GameObject("HeroIconBadge", typeof(RectTransform), typeof(Image));
+        heroIconBadge.transform.SetParent(heroCard.transform, false);
+        panel.heroIconBadgeImage = heroIconBadge.GetComponent<Image>();
+        panel.heroSkillIconText = CreateText("HeroSkillIconText", heroIconBadge.transform, 38f);
+        panel.panelSelectedSkillText = CreateText("SelectedSkillText", heroCard.transform, 18f);
+        panel.heroSkillNameText = CreateText("HeroSkillNameText", heroCard.transform, 32f);
+        panel.heroSkillMetaText = CreateText("HeroSkillMetaText", heroCard.transform, 18f);
+
+        GameObject heroProgressFill = new GameObject("HeroProgressFill", typeof(RectTransform), typeof(Image));
+        heroProgressFill.transform.SetParent(heroCard.transform, false);
+        panel.heroProgressFillImage = heroProgressFill.GetComponent<Image>();
+        panel.heroProgressText = CreateText("HeroProgressText", heroCard.transform, 22f);
+        panel.heroHintText = CreateText("HeroHintText", heroCard.transform, 16f);
+        panel.heroActionButton = CreateButton("HeroActionButton", heroCard.transform, out TextMeshProUGUI heroActionLabel, 18f);
+        LayoutElement heroActionLayout = panel.heroActionButton.gameObject.AddComponent<LayoutElement>();
+        heroActionLayout.preferredWidth = 118f;
+        heroActionLayout.preferredHeight = 42f;
+        panel.heroActionButtonText = heroActionLabel;
+
+        GameObject chartContainer = new GameObject("ChartContainer", typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup), typeof(LayoutElement));
+        chartContainer.transform.SetParent(skillsCard.transform, false);
+        chartContainer.GetComponent<LayoutElement>().preferredHeight = 408f;
+        VerticalLayoutGroup chartLayout = chartContainer.GetComponent<VerticalLayoutGroup>();
+        chartLayout.spacing = 16f;
+        chartLayout.padding = new RectOffset(16, 16, 16, 16);
+        panel.chartTitleText = CreateText("ChartTitleText", chartContainer.transform, 20f);
+        panel.chartEmptyStateText = CreateText("ChartEmptyStateText", chartContainer.transform, 18f);
+
+        GameObject inputObject = new GameObject("SkillNameInput", typeof(RectTransform), typeof(LayoutElement), typeof(TMP_InputField));
+        inputObject.transform.SetParent(skillsCard.transform, false);
+        inputObject.GetComponent<LayoutElement>().preferredHeight = 60f;
+        panel.skillNameInput = inputObject.GetComponent<TMP_InputField>();
+
+        GameObject iconRow = new GameObject("IconRow", typeof(RectTransform), typeof(LayoutElement), typeof(HorizontalLayoutGroup));
+        iconRow.transform.SetParent(skillsCard.transform, false);
+        iconRow.GetComponent<LayoutElement>().preferredHeight = 58f;
+        iconRow.GetComponent<HorizontalLayoutGroup>().spacing = 10f;
+        panel.iconPreviewText = CreateText("IconPreviewText", iconRow.transform, 26f);
+        panel.addSkillButton = CreateButton("AddSkillButton", iconRow.transform, out TextMeshProUGUI addSkillLabel, 18f);
+        LayoutElement addSkillLayout = panel.addSkillButton.gameObject.AddComponent<LayoutElement>();
+        addSkillLayout.preferredWidth = 118f;
+        addSkillLayout.preferredHeight = 36f;
+        panel.addSkillButtonText = addSkillLabel;
+
+        panel.panelStatusText = CreateText("PanelStatusText", skillsCard.transform, 18f);
+        panel.emptyStateText = CreateText("EmptyStateText", skillsCard.transform, 18f);
+        panel.focusSkillStatusText = CreateText("FocusSkillText", skillsCard.transform, 18f);
+
+        GameObject skillsList = new GameObject("SkillsList", typeof(RectTransform), typeof(LayoutElement), typeof(VerticalLayoutGroup), typeof(ScrollRect));
+        skillsList.transform.SetParent(skillsCard.transform, false);
+        LayoutElement skillsListLayout = skillsList.GetComponent<LayoutElement>();
+        skillsListLayout.flexibleHeight = 1f;
+        VerticalLayoutGroup listLayoutGroup = skillsList.GetComponent<VerticalLayoutGroup>();
+        listLayoutGroup.padding = new RectOffset(12, 12, 12, 12);
+        listLayoutGroup.spacing = 0f;
+
+        GameObject viewport = new GameObject("Viewport", typeof(RectTransform));
+        viewport.transform.SetParent(skillsList.transform, false);
+        GameObject content = new GameObject("Content", typeof(RectTransform));
+        content.transform.SetParent(viewport.transform, false);
+        panel.skillsListContainer = content.GetComponent<RectTransform>();
+
+        GameObject rowTemplateObject = new GameObject("SkillRowTemplate", typeof(RectTransform), typeof(Image), typeof(HorizontalLayoutGroup), typeof(LayoutElement), typeof(SkillRowUI));
+        rowTemplateObject.transform.SetParent(content.transform, false);
+        rowTemplateObject.GetComponent<LayoutElement>().preferredHeight = 60f;
+        rowTemplateObject.GetComponent<HorizontalLayoutGroup>().spacing = 10f;
+        SkillRowUI rowTemplate = rowTemplateObject.GetComponent<SkillRowUI>();
+        rowTemplate.backgroundImage = rowTemplateObject.GetComponent<Image>();
+        panel.skillRowTemplate = rowTemplate;
+
+        return panelRoot;
+    }
+
+    private static TextMeshProUGUI CreateText(string name, Transform parent, float fontSize)
+    {
+        GameObject textObject = new GameObject(name, typeof(RectTransform));
+        textObject.transform.SetParent(parent, false);
+        TextMeshProUGUI text = textObject.AddComponent<TextMeshProUGUI>();
+        text.fontSize = fontSize;
+        return text;
+    }
+
+    private static Button CreateButton(string name, Transform parent, out TextMeshProUGUI label, float labelFontSize)
+    {
+        GameObject buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
+        buttonObject.transform.SetParent(parent, false);
+        Button button = buttonObject.GetComponent<Button>();
+        label = CreateText("Label", buttonObject.transform, labelFontSize);
+        return button;
     }
 }

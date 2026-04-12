@@ -1,9 +1,7 @@
 using System;
-using UnityEngine;
 
 public sealed class PetFlowCoordinatorCallbacks
 {
-    public Action OnCoinsChanged;
     public Action OnPetChanged;
     public Action OnPetFlowChanged;
     public Action OnFocusSessionChanged;
@@ -15,54 +13,53 @@ public sealed class PetFlowCoordinatorCallbacks
 public sealed class PetFlowCoordinator
 {
     private readonly PetSystem petSystem;
-    private readonly CurrencySystem currencySystem;
     private readonly FocusCoordinator focusCoordinator;
-    private readonly PetData petData;
-    private readonly CurrencyData currencyData;
     private readonly BalanceConfig balanceConfig;
     private readonly PetFlowCoordinatorCallbacks callbacks;
 
-    private bool lastKnownPetDeadState;
+    private bool lastKnownNeglectedState;
 
     public PetFlowCoordinator(
         PetSystem petSystem,
-        CurrencySystem currencySystem,
         FocusCoordinator focusCoordinator,
-        PetData petData,
-        CurrencyData currencyData,
         BalanceConfig balanceConfig,
         PetFlowCoordinatorCallbacks callbacks)
     {
         this.petSystem = petSystem;
-        this.currencySystem = currencySystem;
         this.focusCoordinator = focusCoordinator;
-        this.petData = petData;
-        this.currencyData = currencyData;
         this.balanceConfig = balanceConfig;
         this.callbacks = callbacks ?? new PetFlowCoordinatorCallbacks();
-        lastKnownPetDeadState = petData != null && petData.isDead;
     }
 
-    public void ResetRuntimeState(bool isDead)
+    public void ResetRuntimeState(bool isNeglected)
     {
-        lastKnownPetDeadState = isDead;
+        lastKnownNeglectedState = isNeglected;
     }
 
     public void HandleStateTransitions()
     {
-        if (petData == null)
+        bool isNeglected = petSystem != null && petSystem.IsNeglected();
+        if (isNeglected == lastKnownNeglectedState)
         {
             return;
         }
 
-        if (petData.isDead && !lastKnownPetDeadState)
+        lastKnownNeglectedState = isNeglected;
+        if (isNeglected)
         {
             focusCoordinator?.CancelForForcedStop();
-            callbacks.ShowFeedback?.Invoke("Pet died. Revive to continue.");
-            callbacks.OnPetFlowChanged?.Invoke();
+            callbacks.ShowFeedback?.Invoke("Pet neglected. Care first.");
+        }
+        else
+        {
+            callbacks.ShowFeedback?.Invoke("Pet recovered. Skill decay stopped.");
         }
 
-        lastKnownPetDeadState = petData.isDead;
+        callbacks.OnPetChanged?.Invoke();
+        callbacks.OnPetFlowChanged?.Invoke();
+        callbacks.OnFocusSessionChanged?.Invoke();
+        callbacks.UpdateUi?.Invoke();
+        callbacks.SaveGame?.Invoke();
     }
 
     public PetStatusSummary GetStatusSummary()
@@ -82,65 +79,5 @@ public sealed class PetFlowCoordinator
         return petSystem.GetStatusSummary(
             balanceConfig.lowHungerMoodThreshold,
             balanceConfig.lowEnergyMoodThreshold);
-    }
-
-    public int GetReviveCost()
-    {
-        return balanceConfig != null ? Mathf.Max(0, balanceConfig.reviveCost) : 0;
-    }
-
-    public bool CanRevivePet()
-    {
-        if (petData == null || !petData.isDead)
-        {
-            return false;
-        }
-
-        return currencyData != null && currencyData.coins >= GetReviveCost();
-    }
-
-    public bool TryRevivePet()
-    {
-        if (petData == null || !petData.isDead)
-        {
-            callbacks.ShowFeedback?.Invoke("Pet is already alive");
-            return false;
-        }
-
-        int reviveCost = GetReviveCost();
-        if (currencyData == null || currencyData.coins < reviveCost)
-        {
-            callbacks.ShowFeedback?.Invoke($"Need {reviveCost} coins to revive");
-            return false;
-        }
-
-        if (currencySystem == null || !currencySystem.SpendCoins(reviveCost))
-        {
-            callbacks.ShowFeedback?.Invoke($"Need {reviveCost} coins to revive");
-            return false;
-        }
-
-        bool revived = petSystem != null && petSystem.Revive(
-            balanceConfig.startingHunger,
-            balanceConfig.startingMood,
-            balanceConfig.startingEnergy);
-
-        if (!revived)
-        {
-            currencySystem.AddCoins(reviveCost);
-            callbacks.ShowFeedback?.Invoke("Revive failed");
-            return false;
-        }
-
-        focusCoordinator?.ClearLastResult(false);
-        lastKnownPetDeadState = false;
-        callbacks.OnCoinsChanged?.Invoke();
-        callbacks.OnPetChanged?.Invoke();
-        callbacks.OnPetFlowChanged?.Invoke();
-        callbacks.OnFocusSessionChanged?.Invoke();
-        callbacks.UpdateUi?.Invoke();
-        callbacks.SaveGame?.Invoke();
-        callbacks.ShowFeedback?.Invoke("Pet revived");
-        return true;
     }
 }

@@ -1,5 +1,7 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 
 public class MissionUxTests
@@ -9,9 +11,9 @@ public class MissionUxTests
     {
         MissionSystem missionSystem = CreateMissionSystem();
 
-        MissionCreationResult shortMath = missionSystem.CreateSkillMission("math", "Math", 15, 20, 10);
-        MissionCreationResult longMath = missionSystem.CreateSkillMission("math", "Math", 30, 30, 12);
-        MissionCreationResult artMission = missionSystem.CreateSkillMission("art", "Art", 15, 20, 10);
+        MissionCreationResult shortMath = missionSystem.CreateSkillMission("math", "Math", 15, 20);
+        MissionCreationResult longMath = missionSystem.CreateSkillMission("math", "Math", 30, 30);
+        MissionCreationResult artMission = missionSystem.CreateSkillMission("art", "Art", 15, 20);
 
         SkillMissionProgressResult progress = missionSystem.ApplySkillFocusProgress("math", 20f, false);
 
@@ -34,7 +36,7 @@ public class MissionUxTests
     public void ClaimFlow_CompletedSkillMissionCanOnlyBeClaimedOnce()
     {
         MissionSystem missionSystem = CreateMissionSystem();
-        MissionCreationResult create = missionSystem.CreateSkillMission("math", "Math", 15, 25, 10);
+        MissionCreationResult create = missionSystem.CreateSkillMission("math", "Math", 15, 25);
 
         missionSystem.ApplySkillFocusProgress("math", 15f, false);
 
@@ -43,7 +45,6 @@ public class MissionUxTests
 
         Assert.True(firstClaim.success);
         Assert.AreEqual(25, firstClaim.rewardCoins);
-        Assert.AreEqual(10, firstClaim.rewardXp);
         StringAssert.Contains("Math", firstClaim.sourceTitle);
         Assert.False(secondClaim.success);
     }
@@ -52,20 +53,74 @@ public class MissionUxTests
     public void RoutineCompletion_CompletesAndClaimsImmediately()
     {
         MissionSystem missionSystem = CreateMissionSystem();
-        MissionCreationResult create = missionSystem.CreateRoutine("Stretch", 12, 6, 4, 5, 1.5f, "math");
+        MissionCreationResult create = missionSystem.CreateRoutine("Stretch", 12, 4, 5, 15, "math");
 
         MissionClaimResult result = missionSystem.CompleteRoutine(create.createdMission.missionId);
         MissionEntryData routine = FindMission(missionSystem.GetRoutineMissions(), create.createdMission.missionId);
 
         Assert.True(result.success);
         Assert.AreEqual(12, result.rewardCoins);
-        Assert.AreEqual(6, result.rewardXp);
         Assert.AreEqual(4, result.rewardMood);
         Assert.AreEqual(5, result.rewardEnergy);
-        Assert.AreEqual(1.5f, result.rewardSkillPercent, 0.001f);
+        Assert.AreEqual(15, result.rewardSkillSP);
         Assert.NotNull(routine);
         Assert.True(routine.isCompleted);
         Assert.True(routine.isClaimed);
+    }
+
+    [Test]
+    public void DailyGenericMissions_AreNotExposedAsManualRoutines()
+    {
+        MissionSystem missionSystem = CreateMissionSystem();
+        int resetBucket = TimeService.GetResetBucket(new DateTime(2026, 4, 10, 6, 0, 0));
+
+        missionSystem.EnsureDailySkillMissions(new List<SkillEntry>(), resetBucket);
+
+        List<MissionEntryData> routines = missionSystem.GetRoutineMissions();
+        MissionEntryData genericMission = missionSystem.GetActiveMissions().Find(mission =>
+            mission != null
+            && !string.Equals(mission.missionType, "routine", StringComparison.Ordinal)
+            && !string.Equals(mission.missionType, "skill_focus", StringComparison.Ordinal));
+
+        Assert.IsEmpty(routines);
+        Assert.NotNull(genericMission);
+
+        MissionClaimResult result = missionSystem.CompleteRoutine(genericMission.missionId);
+        MissionEntryData refreshed = FindMission(missionSystem.GetActiveMissions(), genericMission.missionId);
+
+        Assert.False(result.success);
+        Assert.NotNull(refreshed);
+        Assert.False(refreshed.isCompleted);
+        Assert.False(refreshed.isClaimed);
+    }
+
+    [Test]
+    public void EligibleCandidates_IncludeGenericWorkMission()
+    {
+        MissionSystem missionSystem = CreateMissionSystem();
+        MethodInfo method = typeof(MissionSystem).GetMethod("BuildEligibleMissionCandidates", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(method);
+
+        IList candidates = method.Invoke(
+            missionSystem,
+            new object[] { new List<SkillEntry>(), MissionDifficulty.Easy, new List<MissionEntryData>(), new HashSet<string>(), -1, "test" }) as IList;
+
+        Assert.NotNull(candidates);
+
+        bool hasWorkCandidate = false;
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            object candidate = candidates[i];
+            FieldInfo keyField = candidate.GetType().GetField("key", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+            string key = keyField != null ? keyField.GetValue(candidate) as string : null;
+            if (string.Equals(key, "work:Easy", StringComparison.Ordinal))
+            {
+                hasWorkCandidate = true;
+                break;
+            }
+        }
+
+        Assert.True(hasWorkCandidate);
     }
 
     [Test]
@@ -75,7 +130,7 @@ public class MissionUxTests
         List<string> missionIds = new List<string>();
         for (int i = 0; i < 5; i++)
         {
-            MissionCreationResult create = missionSystem.CreateSkillMission("math", "Math", 15, 20, 10);
+            MissionCreationResult create = missionSystem.CreateSkillMission("math", "Math", 15, 20);
             missionIds.Add(create.createdMission.missionId);
         }
 
@@ -104,7 +159,7 @@ public class MissionUxTests
         int afterResetBucket = TimeService.GetResetBucket(new DateTime(2026, 4, 10, 5, 1, 0));
 
         missionSystem.EnsureDailySkillMissions(new List<SkillEntry>(), beforeResetBucket);
-        MissionCreationResult routine = missionSystem.CreateRoutine("Brush teeth", 5, 2, 1, 1, 0f, string.Empty);
+        MissionCreationResult routine = missionSystem.CreateRoutine("Brush teeth", 5, 1, 1, 0, string.Empty);
         missionData.skillBonusClaimed = true;
         missionData.customRoutineCreateCount = 4;
 

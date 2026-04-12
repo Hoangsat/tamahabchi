@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -6,29 +5,8 @@ using UnityEngine.UI;
 
 public class SkillsPanelUI : MonoBehaviour
 {
-    private static readonly string[] IconOptions =
-    {
-        "MTH", "DNC", "DEV", "SPT", "ART", "BKS", "GME", "ZEN", "MSC", "WRT"
-    };
-
     private const int MinimumSkillsForRadar = 3;
     private const int RadarChartSkillLimit = 12;
-
-    private static readonly Color[] ChartPalette =
-    {
-        new Color(0.95f, 0.47f, 0.47f, 1f),
-        new Color(0.96f, 0.71f, 0.34f, 1f),
-        new Color(0.96f, 0.88f, 0.38f, 1f),
-        new Color(0.66f, 0.88f, 0.35f, 1f),
-        new Color(0.44f, 0.81f, 0.58f, 1f),
-        new Color(0.34f, 0.84f, 0.84f, 1f),
-        new Color(0.38f, 0.69f, 0.95f, 1f),
-        new Color(0.49f, 0.58f, 0.95f, 1f),
-        new Color(0.72f, 0.52f, 0.95f, 1f),
-        new Color(0.91f, 0.48f, 0.84f, 1f),
-        new Color(0.92f, 0.56f, 0.64f, 1f),
-        new Color(0.73f, 0.73f, 0.78f, 1f)
-    };
 
     public GameObject panelRoot;
     public Button openButton;
@@ -69,18 +47,55 @@ public class SkillsPanelUI : MonoBehaviour
     private readonly List<SkillRowUI> spawnedRows = new List<SkillRowUI>();
     private readonly List<TextMeshProUGUI> spawnedRadarLabels = new List<TextMeshProUGUI>();
     private GameManager gameManager;
-    private int currentIconIndex;
-    private Coroutine skillGainPopupCoroutine;
-    private Vector2 skillGainPopupBasePosition;
-    private bool hasPopupBasePosition;
+    private SkillsPanelCoordinator panelCoordinator;
+    private SkillsPanelPopupController popupController;
+    private RectTransform archetypePickerRoot;
+    private GridLayoutGroup archetypePickerGrid;
+    private readonly List<SkillArchetypeCardUI> spawnedArchetypeCards = new List<SkillArchetypeCardUI>();
+    private GameObject archetypeEditPopupRoot;
+    private RectTransform archetypeEditPopupCardsRoot;
+    private GridLayoutGroup archetypeEditPopupGrid;
+    private TextMeshProUGUI archetypeEditPopupTitleText;
+    private Button archetypeEditPopupCloseButton;
+    private Button archetypeEditPopupConfirmButton;
+    private TextMeshProUGUI archetypeEditPopupConfirmButtonText;
+    private readonly List<SkillArchetypeCardUI> spawnedArchetypePopupCards = new List<SkillArchetypeCardUI>();
+    private string selectedCreateArchetypeId = SkillArchetypeCatalog.Logic;
+    private string editingSkillId = string.Empty;
+    private string pendingEditArchetypeId = string.Empty;
     private string pendingFeedbackSkillId = string.Empty;
-    private float pendingFeedbackDelta;
-    private float pendingFeedbackNewPercent;
+    private SkillProgressResult pendingFeedbackResult;
+    private bool responsiveReferencesCached;
+    private bool responsiveDefaultsCached;
+    private VerticalLayoutGroup skillsCardLayoutGroup;
+    private LayoutElement heroCardLayoutElement;
+    private VerticalLayoutGroup heroCardLayoutGroup;
+    private LayoutElement chartContainerLayoutElement;
+    private VerticalLayoutGroup chartContainerLayoutGroup;
+    private LayoutElement skillNameInputLayoutElement;
+    private LayoutElement iconRowLayoutElement;
+    private HorizontalLayoutGroup iconRowLayoutGroup;
+    private VerticalLayoutGroup skillsListLayoutGroup;
+    private LayoutElement closeButtonLayoutElement;
+    private LayoutElement heroActionButtonLayoutElement;
+    private LayoutElement addSkillButtonLayoutElement;
+    private readonly Dictionary<TextMeshProUGUI, float> defaultFontSizes = new Dictionary<TextMeshProUGUI, float>();
+    private readonly Dictionary<LayoutElement, LayoutElementDefaults> defaultLayoutElements = new Dictionary<LayoutElement, LayoutElementDefaults>();
+    private readonly Dictionary<HorizontalOrVerticalLayoutGroup, LayoutGroupDefaults> defaultLayoutGroups = new Dictionary<HorizontalOrVerticalLayoutGroup, LayoutGroupDefaults>();
 
-    private sealed class ChartSkill
+    private sealed class LayoutElementDefaults
     {
-        public SkillEntry Skill;
-        public Color Color;
+        public float PreferredWidth;
+        public float PreferredHeight;
+    }
+
+    private sealed class LayoutGroupDefaults
+    {
+        public float Spacing;
+        public int Left;
+        public int Right;
+        public int Top;
+        public int Bottom;
     }
 
     private void Awake()
@@ -97,8 +112,18 @@ public class SkillsPanelUI : MonoBehaviour
             heroActionButton.onClick.RemoveListener(HandleHeroAction);
             heroActionButton.onClick.AddListener(HandleHeroAction);
         }
-        if (previousIconButton != null) previousIconButton.onClick.AddListener(SelectPreviousIcon);
-        if (nextIconButton != null) nextIconButton.onClick.AddListener(SelectNextIcon);
+        if (previousIconButton != null)
+        {
+            previousIconButton.onClick.RemoveListener(SelectPreviousIcon);
+            previousIconButton.onClick.AddListener(SelectPreviousIcon);
+            previousIconButton.gameObject.SetActive(false);
+        }
+        if (nextIconButton != null)
+        {
+            nextIconButton.onClick.RemoveListener(SelectNextIcon);
+            nextIconButton.onClick.AddListener(SelectNextIcon);
+            nextIconButton.gameObject.SetActive(false);
+        }
         if (addSkillButton != null) addSkillButton.onClick.AddListener(AddSkillFromUI);
         if (skillNameInput != null) skillNameInput.onValueChanged.AddListener(_ => RefreshAddButtonState());
 
@@ -117,19 +142,20 @@ public class SkillsPanelUI : MonoBehaviour
             skillGainPopupCanvasGroup = skillGainPopupRoot.GetComponent<CanvasGroup>();
         }
 
-        CachePopupBasePosition();
+        popupController = new SkillsPanelPopupController(
+            skillGainPopupRoot,
+            skillGainPopupCanvasGroup,
+            skillGainPopupTransform,
+            skillGainPopupIconText,
+            skillGainPopupText);
+        popupController.HideImmediate(this);
 
-        if (skillGainPopupCanvasGroup != null)
-        {
-            skillGainPopupCanvasGroup.alpha = 0f;
-        }
-
-        if (skillGainPopupRoot != null)
-        {
-            skillGainPopupRoot.SetActive(false);
-        }
-
+        EnsureArchetypePickerUi();
+        EnsureArchetypeEditPopupUi();
+        CacheResponsiveReferences();
+        CacheResponsiveDefaults();
         UpdateIconPreview();
+        ApplyResponsiveLayout();
     }
 
     private void OnEnable()
@@ -155,6 +181,7 @@ public class SkillsPanelUI : MonoBehaviour
         }
 
         HideSkillGainPopupImmediate();
+        CloseArchetypeEditPopup();
         ClearPendingSkillFeedback();
     }
 
@@ -172,6 +199,7 @@ public class SkillsPanelUI : MonoBehaviour
         }
 
         gameManager = manager;
+        panelCoordinator = gameManager != null ? new SkillsPanelCoordinator(gameManager) : null;
 
         if (isActiveAndEnabled && gameManager != null)
         {
@@ -187,12 +215,15 @@ public class SkillsPanelUI : MonoBehaviour
             panelRoot.SetActive(true);
         }
 
+        ApplyResponsiveLayout();
+
         if (closeButton != null)
         {
             closeButton.gameObject.SetActive(false);
         }
 
         HideSkillGainPopupImmediate();
+        CloseArchetypeEditPopup();
         ClearPendingSkillFeedback();
         SetStatus(string.Empty);
         RefreshUI();
@@ -211,6 +242,7 @@ public class SkillsPanelUI : MonoBehaviour
         }
 
         HideSkillGainPopupImmediate();
+        CloseArchetypeEditPopup();
         ClearPendingSkillFeedback();
         SetStatus(string.Empty);
     }
@@ -232,13 +264,29 @@ public class SkillsPanelUI : MonoBehaviour
 
     private void SelectPreviousIcon()
     {
-        currentIconIndex = (currentIconIndex - 1 + IconOptions.Length) % IconOptions.Length;
+        List<SkillArchetypeDefinition> archetypes = GetSelectableArchetypes();
+        if (archetypes.Count == 0)
+        {
+            return;
+        }
+
+        int currentIndex = GetSelectedArchetypeIndex(archetypes, selectedCreateArchetypeId);
+        currentIndex = (currentIndex - 1 + archetypes.Count) % archetypes.Count;
+        selectedCreateArchetypeId = archetypes[currentIndex].Id;
         UpdateIconPreview();
     }
 
     private void SelectNextIcon()
     {
-        currentIconIndex = (currentIconIndex + 1) % IconOptions.Length;
+        List<SkillArchetypeDefinition> archetypes = GetSelectableArchetypes();
+        if (archetypes.Count == 0)
+        {
+            return;
+        }
+
+        int currentIndex = GetSelectedArchetypeIndex(archetypes, selectedCreateArchetypeId);
+        currentIndex = (currentIndex + 1) % archetypes.Count;
+        selectedCreateArchetypeId = archetypes[currentIndex].Id;
         UpdateIconPreview();
     }
 
@@ -246,33 +294,32 @@ public class SkillsPanelUI : MonoBehaviour
     {
         if (iconPreviewText != null)
         {
-            iconPreviewText.text = IconOptions[currentIconIndex];
-            iconPreviewText.fontSize = IconOptions[currentIconIndex].Length > 2 ? 18f : 26f;
+            SkillArchetypeDefinition selectedArchetype = SkillArchetypeCatalog.GetDefinition(selectedCreateArchetypeId);
+            iconPreviewText.text = selectedArchetype.DisplayName;
+            float baseFontSize = 18f;
+            iconPreviewText.fontSize = baseFontSize * GetResponsiveProfile().FontScale;
+            iconPreviewText.enabled = true;
+            DisableInlineIconOverlay(iconPreviewText);
         }
 
+        RefreshArchetypePicker();
         RefreshAddButtonState();
     }
 
     private void AddSkillFromUI()
     {
-        if (gameManager == null)
+        if (panelCoordinator == null)
         {
             SetStatus("GameManager missing");
             return;
         }
 
-        string candidateName = skillNameInput != null ? skillNameInput.text : string.Empty;
-        if (gameManager.HasSkillName(candidateName))
+        SkillsPanelActionResult result = panelCoordinator.AddSkill(
+            skillNameInput != null ? skillNameInput.text : string.Empty,
+            selectedCreateArchetypeId);
+        if (!result.Success)
         {
-            SetStatus("Skill already exists");
-            RefreshAddButtonState();
-            return;
-        }
-
-        SkillEntry addedSkill = gameManager.AddSkill(candidateName, IconOptions[currentIconIndex]);
-        if (addedSkill == null)
-        {
-            SetStatus("Enter a valid name");
+            SetStatus(result.Message);
             RefreshAddButtonState();
             return;
         }
@@ -282,46 +329,65 @@ public class SkillsPanelUI : MonoBehaviour
             skillNameInput.text = string.Empty;
         }
 
-        SetStatus("Skill created");
+        SetStatus(result.Message);
         RefreshUI();
     }
 
     private void OnSelectSkill(string skillId)
     {
-        if (gameManager == null)
+        if (panelCoordinator == null)
         {
             return;
         }
 
-        if (gameManager.SetSelectedFocusSkill(skillId))
+        SkillsPanelActionResult result = panelCoordinator.SelectSkillForFocus(skillId);
+        if (result.Success)
         {
-            if (!gameManager.OpenFocusPanel(skillId))
+            if (!string.IsNullOrEmpty(result.Message))
             {
-                SetStatus("Focus skill selected");
+                SetStatus(result.Message);
             }
+
             RefreshUI();
         }
     }
 
     private void OnRemoveSkill(string skillId)
     {
-        if (gameManager == null)
+        if (panelCoordinator == null)
         {
             return;
         }
 
-        if (gameManager.RemoveSkill(skillId))
+        SkillsPanelActionResult result = panelCoordinator.RemoveSkill(skillId);
+        SetStatus(result.Message);
+        if (result.Success)
         {
-            SetStatus("Skill removed");
             RefreshUI();
-        }
-        else
-        {
-            SetStatus("Only 0% skills can be removed");
         }
     }
 
-    private void HandleSkillProgressAdded(string skillId, float delta, float newPercent)
+    private void OnChangeSkillType(string skillId)
+    {
+        if (panelCoordinator == null)
+        {
+            return;
+        }
+
+        SkillEntry skill = panelCoordinator.GetSkillById(skillId);
+        if (skill == null)
+        {
+            return;
+        }
+
+        editingSkillId = skill.id;
+        pendingEditArchetypeId = SkillArchetypeCatalog.IsSelectable(skill.archetypeId)
+            ? SkillArchetypeCatalog.NormalizeArchetypeId(skill.archetypeId)
+            : GetFirstSelectableArchetypeId();
+        OpenArchetypeEditPopup(skill);
+    }
+
+    private void HandleSkillProgressAdded(SkillProgressResult result)
     {
         if (!IsPanelVisible())
         {
@@ -330,52 +396,88 @@ public class SkillsPanelUI : MonoBehaviour
             return;
         }
 
-        pendingFeedbackSkillId = skillId;
-        pendingFeedbackDelta = delta;
-        pendingFeedbackNewPercent = newPercent;
-
-        if (gameManager == null)
+        if (result == null || string.IsNullOrEmpty(result.skillId))
         {
             return;
         }
 
-        SkillEntry skill = gameManager.GetSkillById(skillId);
+        pendingFeedbackSkillId = result.skillId;
+        pendingFeedbackResult = result;
+
+        if (panelCoordinator == null)
+        {
+            return;
+        }
+
+        SkillEntry skill = panelCoordinator.GetSkillById(result.skillId);
         if (skill == null)
         {
             return;
         }
 
-        ShowSkillGainPopup(skill, delta, newPercent >= 99.99f);
+        SkillProgressionViewData view = panelCoordinator.GetSkillProgressionView(result.skillId);
+        ShowSkillGainPopup(skill, view, result);
     }
 
     private void RefreshUI()
     {
-        if (gameManager == null)
+        ApplyResponsiveLayout();
+        RefreshArchetypePicker();
+        RefreshArchetypeEditPopup();
+
+        if (panelCoordinator == null)
         {
             return;
         }
 
-        List<SkillEntry> skills = gameManager.GetSkills();
-        string selectedSkillId = gameManager.GetSelectedFocusSkill();
-        UpdateFocusSkillStatus(skills, selectedSkillId);
-        RefreshHeroBlock(skills, selectedSkillId);
+        SkillsPanelSnapshot snapshot = panelCoordinator.GetSnapshot();
+        List<SkillEntry> skills = snapshot.Skills;
+        List<SkillProgressionViewData> skillViews = snapshot.SkillViews;
+        string selectedSkillId = snapshot.SelectedSkillId;
+        SkillsHeroState heroState = panelCoordinator.GetHeroState(snapshot);
+        UpdateFocusSkillStatus(heroState);
+        RefreshHeroBlock(heroState);
         RefreshAddButtonState();
 
         if (panelRoot != null && !panelRoot.activeSelf)
         {
-            pendingFeedbackSkillId = string.Empty;
-            pendingFeedbackDelta = 0f;
-            pendingFeedbackNewPercent = 0f;
+            ClearPendingSkillFeedback();
             return;
         }
 
-        List<ChartSkill> chartSkills = BuildChartSkills(skills);
+        List<SkillsChartEntryViewData> chartSkills = SkillsPanelPresenter.BuildChartEntries(skills, RadarChartSkillLimit);
         string highlightedSkillId = pendingFeedbackSkillId;
-        int highlightedChartIndex = GetChartSkillIndex(chartSkills, highlightedSkillId);
+        int highlightedChartIndex = SkillsPanelPresenter.GetChartSkillIndex(chartSkills, highlightedSkillId);
 
-        UpdateChartPresentation(skills, chartSkills.Count);
-        RebuildChart(chartSkills, highlightedChartIndex >= 0 ? highlightedSkillId : string.Empty);
-        RebuildRows(skills, selectedSkillId, chartSkills, highlightedSkillId);
+        SkillsPanelChartUtility.UpdateChartPresentation(
+            chartTitleText,
+            chartEmptyStateText,
+            radarLabelsRoot,
+            skills,
+            MinimumSkillsForRadar);
+        SkillsPanelChartUtility.RebuildChart(
+            radarChartGraphic,
+            radarLabelsRoot,
+            radarLabelTemplate,
+            chartEmptyStateText,
+            spawnedRadarLabels,
+            chartSkills,
+            skillViews,
+            highlightedChartIndex >= 0 ? highlightedSkillId : string.Empty,
+            GetResponsiveProfile(),
+            MinimumSkillsForRadar);
+        SkillsPanelChartUtility.RebuildRows(
+            skillsListContainer,
+            skillRowTemplate,
+            spawnedRows,
+            skills,
+            skillViews,
+            selectedSkillId,
+            chartSkills,
+            highlightedSkillId,
+            OnSelectSkill,
+            OnChangeSkillType,
+            OnRemoveSkill);
 
         if (emptyStateText != null)
         {
@@ -383,385 +485,79 @@ public class SkillsPanelUI : MonoBehaviour
             emptyStateText.text = "No skills yet";
         }
 
-        pendingFeedbackSkillId = string.Empty;
-        pendingFeedbackDelta = 0f;
-        pendingFeedbackNewPercent = 0f;
+        ClearPendingSkillFeedback();
     }
 
-    private void RebuildRows(List<SkillEntry> skills, string selectedSkillId, List<ChartSkill> chartSkills, string highlightedSkillId)
+    private void OnRectTransformDimensionsChange()
     {
-        if (skillsListContainer == null || skillRowTemplate == null)
-        {
-            return;
-        }
-
-        if (skillRowTemplate.gameObject.activeSelf)
-        {
-            skillRowTemplate.gameObject.SetActive(false);
-        }
-
-        for (int i = 0; i < skills.Count; i++)
-        {
-            Color markerColor = TryGetChartColor(skills[i].id, chartSkills, out Color chartColor)
-                ? chartColor
-                : new Color(0.33f, 0.38f, 0.48f, 0.65f);
-
-            SkillRowUI row = GetOrCreateRow(i);
-            if (row == null)
-            {
-                continue;
-            }
-
-            row.gameObject.SetActive(true);
-            row.transform.SetSiblingIndex(i + 1);
-            row.Bind(
-                skills[i],
-                markerColor,
-                skills[i].id == selectedSkillId,
-                OnSelectSkill,
-                OnRemoveSkill
-            );
-
-            if (!string.IsNullOrEmpty(highlightedSkillId) && skills[i].id == highlightedSkillId)
-            {
-                row.PlayHighlight();
-            }
-        }
-
-        for (int i = skills.Count; i < spawnedRows.Count; i++)
-        {
-            if (spawnedRows[i] == null)
-            {
-                continue;
-            }
-
-            spawnedRows[i].ResetRowState();
-            spawnedRows[i].gameObject.SetActive(false);
-        }
+        ApplyResponsiveLayout();
     }
 
-    private void RebuildChart(List<ChartSkill> chartSkills, string highlightedSkillId)
+    private void UpdateFocusSkillStatus(SkillsHeroState heroState)
     {
-        if (chartEmptyStateText != null)
-        {
-            chartEmptyStateText.gameObject.SetActive(chartSkills.Count < MinimumSkillsForRadar);
-        }
-
-        if (radarChartGraphic == null)
-        {
-            return;
-        }
-
-        if (chartSkills.Count < MinimumSkillsForRadar)
-        {
-            radarChartGraphic.SetValues(null, null);
-            return;
-        }
-
-        List<float> values = new List<float>(chartSkills.Count);
-        List<Color> colors = new List<Color>(chartSkills.Count);
-        int highlightedChartIndex = -1;
-
-        for (int i = 0; i < chartSkills.Count; i++)
-        {
-            values.Add(Mathf.Clamp01(chartSkills[i].Skill.percent / 100f));
-            colors.Add(chartSkills[i].Color);
-
-            if (!string.IsNullOrEmpty(highlightedSkillId) && chartSkills[i].Skill.id == highlightedSkillId)
-            {
-                highlightedChartIndex = i;
-            }
-        }
-
-        if (highlightedChartIndex >= 0)
-        {
-            radarChartGraphic.SetValuesAnimated(values, colors, highlightedChartIndex);
-        }
-        else
-        {
-            radarChartGraphic.SetValues(values, colors);
-        }
-
-        RebuildRadarLabels(chartSkills);
-    }
-
-    private void RebuildRadarLabels(List<ChartSkill> chartSkills)
-    {
-        if (radarLabelsRoot == null || radarLabelTemplate == null || chartSkills.Count < MinimumSkillsForRadar)
-        {
-            HideUnusedRadarLabels(0);
-            return;
-        }
-
-        float radius = Mathf.Min(radarLabelsRoot.rect.width, radarLabelsRoot.rect.height) * 0.5f - 4f;
-        float labelRadius = radius + GetRadarLabelOffset(chartSkills.Count);
-        float fontSize = GetRadarLabelFontSize(chartSkills.Count);
-
-        for (int i = 0; i < chartSkills.Count; i++)
-        {
-            TextMeshProUGUI label = GetOrCreateRadarLabel(i);
-            if (label == null)
-            {
-                continue;
-            }
-
-            label.gameObject.SetActive(true);
-            label.text = GetRadarLabel(chartSkills[i].Skill, chartSkills.Count);
-            label.color = chartSkills[i].Color;
-            label.alignment = TextAlignmentOptions.Center;
-            label.fontSize = fontSize;
-
-            RectTransform labelTransform = label.rectTransform;
-            labelTransform.anchorMin = new Vector2(0.5f, 0.5f);
-            labelTransform.anchorMax = new Vector2(0.5f, 0.5f);
-            labelTransform.pivot = new Vector2(0.5f, 0.5f);
-            labelTransform.anchoredPosition = GetChartPoint(i, chartSkills.Count, labelRadius);
-        }
-        HideUnusedRadarLabels(chartSkills.Count);
-    }
-
-    private List<ChartSkill> BuildChartSkills(List<SkillEntry> skills)
-    {
-        List<ChartSkill> chartSkills = new List<ChartSkill>();
-        if (skills == null || skills.Count == 0)
-        {
-            return chartSkills;
-        }
-
-        int limit = Mathf.Min(RadarChartSkillLimit, skills.Count);
-        for (int i = 0; i < limit; i++)
-        {
-            SkillEntry skill = skills[i];
-            if (skill == null)
-            {
-                continue;
-            }
-
-            chartSkills.Add(new ChartSkill
-            {
-                Skill = skill,
-                Color = GetColorForSkill(skill)
-            });
-        }
-
-        return chartSkills;
-    }
-
-    private void UpdateChartPresentation(List<SkillEntry> skills, int chartSkillCount)
-    {
-        int totalSkills = skills != null ? skills.Count : 0;
-        int skillsNeeded = Mathf.Max(0, MinimumSkillsForRadar - totalSkills);
-
-        if (chartTitleText != null)
-        {
-            chartTitleText.text = totalSkills >= MinimumSkillsForRadar
-                ? $"Skill Radar - {Mathf.Min(chartSkillCount, RadarChartSkillLimit)} tracked"
-                : $"Skill Radar - {Mathf.Min(totalSkills, MinimumSkillsForRadar)}/{MinimumSkillsForRadar} ready";
-        }
-
-        if (chartEmptyStateText != null)
-        {
-            if (totalSkills <= 0)
-            {
-                chartEmptyStateText.text = "Create your first skill to start the radar.\nThe chart unlocks once you track 3 skills.";
-            }
-            else if (skillsNeeded > 0)
-            {
-                string suffix = skillsNeeded == 1 ? string.Empty : "s";
-                chartEmptyStateText.text =
-                    $"Add {skillsNeeded} more skill{suffix} to unlock the radar.\n" +
-                    "Your tracked skills are still active below.";
-            }
-            else
-            {
-                chartEmptyStateText.text = string.Empty;
-            }
-        }
-
-        if (radarLabelsRoot != null)
-        {
-            radarLabelsRoot.gameObject.SetActive(totalSkills >= MinimumSkillsForRadar);
-        }
-    }
-
-    private int GetChartSkillIndex(List<ChartSkill> chartSkills, string skillId)
-    {
-        for (int i = 0; i < chartSkills.Count; i++)
-        {
-            if (chartSkills[i].Skill.id == skillId)
-            {
-                return i;
-            }
-        }
-
-        return -1;
-    }
-
-    private bool TryGetChartColor(string skillId, List<ChartSkill> chartSkills, out Color color)
-    {
-        for (int i = 0; i < chartSkills.Count; i++)
-        {
-            if (chartSkills[i].Skill.id == skillId)
-            {
-                color = chartSkills[i].Color;
-                return true;
-            }
-        }
-
-        color = Color.white;
-        return false;
-    }
-
-    private string GetRadarLabel(SkillEntry skill, int axisCount)
-    {
-        if (skill == null)
-        {
-            return string.Empty;
-        }
-
-        if (axisCount >= 11 && !string.IsNullOrEmpty(skill.icon))
-        {
-            return skill.icon;
-        }
-
-        string shortName = skill.name;
-        int maxLength = axisCount >= 10 ? 4 : axisCount >= 8 ? 5 : 8;
-        if (!string.IsNullOrEmpty(shortName) && shortName.Length > maxLength)
-        {
-            shortName = shortName.Substring(0, maxLength);
-        }
-
-        if (string.IsNullOrEmpty(skill.icon))
-        {
-            return shortName;
-        }
-
-        return string.IsNullOrEmpty(shortName) ? skill.icon : $"{skill.icon}\n{shortName}";
-    }
-
-    private float GetRadarLabelOffset(int axisCount)
-    {
-        if (axisCount >= 10)
-        {
-            return 24f;
-        }
-
-        if (axisCount >= 8)
-        {
-            return 21f;
-        }
-
-        return 18f;
-    }
-
-    private float GetRadarLabelFontSize(int axisCount)
-    {
-        if (radarLabelTemplate == null)
-        {
-            return 9f;
-        }
-
-        float baseSize = radarLabelTemplate.fontSize;
-        if (axisCount >= 10)
-        {
-            return Mathf.Max(7f, baseSize - 1f);
-        }
-
-        if (axisCount >= 8)
-        {
-            return Mathf.Max(8f, baseSize);
-        }
-
-        return baseSize;
-    }
-
-    private Vector2 GetChartPoint(int index, int count, float radius)
-    {
-        float angle = Mathf.PI * 0.5f - (Mathf.PI * 2f * index / count);
-        return new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius;
-    }
-
-    private void UpdateFocusSkillStatus(List<SkillEntry> skills, string selectedSkillId)
-    {
-        bool usingSelectedSkill;
-        SkillEntry heroSkill = GetHeroSkill(skills, selectedSkillId, out usingSelectedSkill);
-        string selectedName = heroSkill != null ? heroSkill.name : "None";
-        string heroLabel = heroSkill == null
-            ? "No Skills Yet"
-            : usingSelectedSkill
-                ? "Current Focus"
-                : "Top Skill";
-        string hudLabel = "Current Focus: " + selectedName;
-
         if (panelSelectedSkillText != null)
         {
-            panelSelectedSkillText.text = heroLabel;
+            panelSelectedSkillText.text = heroState.HeroLabel;
         }
 
         if (focusSkillStatusText != null)
         {
-            focusSkillStatusText.text = hudLabel;
+            focusSkillStatusText.text = heroState.HudLabel;
         }
     }
 
-    private void RefreshHeroBlock(List<SkillEntry> skills, string selectedSkillId)
+    private void RefreshHeroBlock(SkillsHeroState heroState)
     {
-        bool usingSelectedSkill;
-        SkillEntry heroSkill = GetHeroSkill(skills, selectedSkillId, out usingSelectedSkill);
-        Color accentColor = heroSkill != null
-            ? GetColorForSkill(heroSkill)
-            : new Color(0.32f, 0.39f, 0.54f, 1f);
+        SkillEntry heroSkill = heroState.HeroSkill;
+        SkillProgressionViewData heroView = heroState.HeroView;
+        SkillsHeroVisualViewData heroVisual = SkillsPanelPresenter.BuildHeroVisual(heroState);
 
         if (heroCardBackgroundImage != null)
         {
-            heroCardBackgroundImage.color = Color.Lerp(new Color(0.14f, 0.18f, 0.27f, 0.98f), accentColor, 0.22f);
+            heroCardBackgroundImage.color = heroVisual.BackgroundColor;
         }
 
         if (heroIconBadgeImage != null)
         {
-            heroIconBadgeImage.color = Color.Lerp(new Color(0.18f, 0.23f, 0.34f, 1f), accentColor, 0.42f);
+            heroIconBadgeImage.color = heroVisual.BadgeColor;
         }
 
         if (heroSkillIconText != null)
         {
-            string icon = heroSkill == null || string.IsNullOrWhiteSpace(heroSkill.icon) ? "SKL" : heroSkill.icon.Trim();
-            heroSkillIconText.text = icon;
-            heroSkillIconText.fontSize = icon.Length > 2 ? 28f : 38f;
+            heroSkillIconText.text = heroVisual.IconText;
+            heroSkillIconText.fontSize = heroVisual.IconBaseFontSize * GetResponsiveProfile().FontScale;
+            UiIconViewUtility.ApplyIconToTextSlot(heroSkillIconText, heroVisual.IconText);
         }
 
         if (heroSkillNameText != null)
         {
-            heroSkillNameText.text = heroSkill == null ? "Create your first skill" : heroSkill.name;
+            heroSkillNameText.text = heroState.HeroNameText;
         }
 
         if (heroSkillMetaText != null)
         {
-            heroSkillMetaText.text = BuildHeroMeta(heroSkill, usingSelectedSkill);
+            heroSkillMetaText.text = heroState.HeroMetaText;
         }
 
         if (heroProgressFillImage != null)
         {
-            heroProgressFillImage.fillAmount = heroSkill == null ? 0f : Mathf.Clamp01(heroSkill.percent / 100f);
-            heroProgressFillImage.color = accentColor;
+            heroProgressFillImage.fillAmount = heroView == null ? 0f : (heroView.isMaxed ? 1f : Mathf.Clamp01(heroView.progressInLevel01));
+            heroProgressFillImage.color = heroVisual.AccentColor;
         }
 
         if (heroProgressText != null)
         {
-            heroProgressText.text = heroSkill == null ? "0% tracked" : $"{heroSkill.percent:0.#}% tracked";
+            heroProgressText.text = heroState.ProgressLabel;
         }
 
         if (heroHintText != null)
         {
-            heroHintText.text = BuildHeroHint(heroSkill, usingSelectedSkill);
+            heroHintText.text = heroState.HintText;
         }
 
         if (heroActionButtonText != null)
         {
-            heroActionButtonText.text = heroSkill == null
-                ? "Create Skill"
-                : usingSelectedSkill
-                    ? "Start Focus"
-                    : "Focus This";
+            heroActionButtonText.text = heroState.ActionText;
         }
 
         if (heroActionButton != null)
@@ -770,100 +566,21 @@ public class SkillsPanelUI : MonoBehaviour
             Image buttonImage = heroActionButton.GetComponent<Image>();
             if (buttonImage != null)
             {
-                buttonImage.color = heroSkill == null
-                    ? new Color(0.22f, 0.44f, 0.32f, 0.98f)
-                    : Color.Lerp(new Color(0.20f, 0.46f, 0.32f, 0.98f), accentColor, 0.18f);
+                buttonImage.color = heroVisual.ButtonColor;
             }
         }
-    }
-
-    private SkillEntry GetHeroSkill(List<SkillEntry> skills, string selectedSkillId, out bool usingSelectedSkill)
-    {
-        usingSelectedSkill = false;
-        if (skills == null || skills.Count == 0)
-        {
-            return null;
-        }
-
-        for (int i = 0; i < skills.Count; i++)
-        {
-            SkillEntry skill = skills[i];
-            if (skill != null && skill.id == selectedSkillId)
-            {
-                usingSelectedSkill = true;
-                return skill;
-            }
-        }
-
-        SkillEntry bestSkill = null;
-        for (int i = 0; i < skills.Count; i++)
-        {
-            SkillEntry candidate = skills[i];
-            if (candidate == null)
-            {
-                continue;
-            }
-
-            if (bestSkill == null)
-            {
-                bestSkill = candidate;
-                continue;
-            }
-
-            if (candidate.percent > bestSkill.percent)
-            {
-                bestSkill = candidate;
-                continue;
-            }
-
-            if (Mathf.Approximately(candidate.percent, bestSkill.percent) && candidate.totalFocusMinutes > bestSkill.totalFocusMinutes)
-            {
-                bestSkill = candidate;
-            }
-        }
-
-        return bestSkill ?? skills[0];
-    }
-
-    private string BuildHeroMeta(SkillEntry heroSkill, bool usingSelectedSkill)
-    {
-        if (heroSkill == null)
-        {
-            return "Train a talent and turn it into your pet's signature skill.";
-        }
-
-        string role = usingSelectedSkill ? "Selected" : "Recommended";
-        string minutes = heroSkill.totalFocusMinutes > 0 ? $" | {heroSkill.totalFocusMinutes}m logged" : " | Fresh track";
-        string golden = heroSkill.isGolden ? " | Golden" : string.Empty;
-        return $"{role} | {heroSkill.percent:0.#}% progress{minutes}{golden}";
-    }
-
-    private string BuildHeroHint(SkillEntry heroSkill, bool usingSelectedSkill)
-    {
-        if (heroSkill == null)
-        {
-            return "Create your first skill below, then launch a focused training run.";
-        }
-
-        if (heroSkill.isGolden)
-        {
-            return "Golden bonus is active. This skill is giving you extra value now.";
-        }
-
-        return usingSelectedSkill
-            ? "Everything is lined up for your next focus session."
-            : "This looks like your strongest next training target.";
     }
 
     private void HandleHeroAction()
     {
-        if (gameManager == null)
+        if (panelCoordinator == null)
         {
             return;
         }
 
-        bool usingSelectedSkill;
-        SkillEntry heroSkill = GetHeroSkill(gameManager.GetSkills(), gameManager.GetSelectedFocusSkill(), out usingSelectedSkill);
+        SkillsPanelSnapshot snapshot = panelCoordinator.GetSnapshot();
+        SkillsHeroState heroState = panelCoordinator.GetHeroState(snapshot);
+        SkillEntry heroSkill = heroState.HeroSkill;
         if (heroSkill == null)
         {
             if (skillNameInput != null)
@@ -876,10 +593,10 @@ public class SkillsPanelUI : MonoBehaviour
             return;
         }
 
-        gameManager.SetSelectedFocusSkill(heroSkill.id);
-        if (!gameManager.OpenFocusPanel(heroSkill.id))
+        SkillsPanelActionResult result = panelCoordinator.StartHeroFocus(heroSkill.id);
+        if (!string.IsNullOrEmpty(result.Message))
         {
-            SetStatus("Focus is unavailable right now");
+            SetStatus(result.Message);
         }
 
         RefreshUI();
@@ -887,211 +604,745 @@ public class SkillsPanelUI : MonoBehaviour
 
     private void RefreshAddButtonState()
     {
-        if (addSkillButton == null || gameManager == null)
+        if (addSkillButton == null || panelCoordinator == null)
         {
             return;
         }
 
         bool hasName = skillNameInput != null && !string.IsNullOrWhiteSpace(skillNameInput.text);
-        bool hasDuplicate = hasName && gameManager.HasSkillName(skillNameInput.text);
+        bool hasDuplicate = hasName && panelCoordinator.HasDuplicateSkillName(skillNameInput.text);
+        bool hasArchetype = SkillArchetypeCatalog.IsSelectable(selectedCreateArchetypeId);
 
-        addSkillButton.interactable = hasName && !hasDuplicate;
+        addSkillButton.interactable = hasName && !hasDuplicate && hasArchetype;
 
         if (addSkillButtonText != null)
         {
-            addSkillButtonText.text = hasDuplicate ? "Exists" : "Add Skill";
+            addSkillButtonText.text = hasDuplicate ? "Exists" : "Create Skill";
         }
     }
 
-    private void ShowSkillGainPopup(SkillEntry skill, float delta, bool reachedMax)
+    private void ShowSkillGainPopup(SkillEntry skill, SkillProgressionViewData view, SkillProgressResult result)
     {
-        if (skill == null || skillGainPopupRoot == null || !IsPanelVisible())
+        if (skill == null || view == null || result == null || skillGainPopupRoot == null || !IsPanelVisible())
         {
             return;
         }
 
-        CachePopupBasePosition();
-
-        if (skillGainPopupIconText != null)
+        SkillsGainPopupViewData popupView = SkillsPanelPresenter.BuildGainPopup(skill, view, result);
+        if (popupController == null)
         {
-            skillGainPopupIconText.text = string.IsNullOrEmpty(skill.icon) ? "SKL" : skill.icon;
+            popupController = new SkillsPanelPopupController(
+                skillGainPopupRoot,
+                skillGainPopupCanvasGroup,
+                skillGainPopupTransform,
+                skillGainPopupIconText,
+                skillGainPopupText);
         }
 
-        if (skillGainPopupText != null)
-        {
-            string suffix = reachedMax ? " MAX" : string.Empty;
-            skillGainPopupText.text = $"{skill.name} +{delta:0.#}%{suffix}";
-        }
-
-        if (skillGainPopupCoroutine != null)
-        {
-            StopCoroutine(skillGainPopupCoroutine);
-        }
-
-        skillGainPopupCoroutine = StartCoroutine(PlaySkillGainPopupRoutine());
-    }
-
-    private IEnumerator PlaySkillGainPopupRoutine()
-    {
-        const float duration = 1.2f;
-        const float riseDistance = 26f;
-
-        if (skillGainPopupRoot != null)
-        {
-            skillGainPopupRoot.SetActive(true);
-        }
-
-        if (skillGainPopupCanvasGroup != null)
-        {
-            skillGainPopupCanvasGroup.alpha = 1f;
-        }
-
-        CachePopupBasePosition();
-
-        float elapsed = 0f;
-        while (elapsed < duration)
-        {
-            elapsed += Time.unscaledDeltaTime;
-            float normalized = Mathf.Clamp01(elapsed / duration);
-            float eased = 1f - Mathf.Pow(1f - normalized, 2f);
-
-            if (skillGainPopupTransform != null)
-            {
-                skillGainPopupTransform.anchoredPosition = skillGainPopupBasePosition + Vector2.up * (riseDistance * eased);
-            }
-
-            if (skillGainPopupCanvasGroup != null)
-            {
-                float alpha = normalized < 0.2f
-                    ? Mathf.Lerp(0f, 1f, normalized / 0.2f)
-                    : Mathf.Lerp(1f, 0f, (normalized - 0.2f) / 0.8f);
-                skillGainPopupCanvasGroup.alpha = alpha;
-            }
-
-            yield return null;
-        }
-
-        if (skillGainPopupTransform != null)
-        {
-            skillGainPopupTransform.anchoredPosition = skillGainPopupBasePosition;
-        }
-
-        if (skillGainPopupCanvasGroup != null)
-        {
-            skillGainPopupCanvasGroup.alpha = 0f;
-        }
-
-        if (skillGainPopupRoot != null)
-        {
-            skillGainPopupRoot.SetActive(false);
-        }
-
-        skillGainPopupCoroutine = null;
-    }
-
-    private void CachePopupBasePosition()
-    {
-        if (hasPopupBasePosition || skillGainPopupTransform == null)
-        {
-            return;
-        }
-
-        skillGainPopupBasePosition = skillGainPopupTransform.anchoredPosition;
-        hasPopupBasePosition = true;
+        popupController.Show(this, popupView);
     }
 
     private void HideSkillGainPopupImmediate()
     {
-        if (skillGainPopupCoroutine != null)
+        if (popupController == null)
         {
-            StopCoroutine(skillGainPopupCoroutine);
-            skillGainPopupCoroutine = null;
+            popupController = new SkillsPanelPopupController(
+                skillGainPopupRoot,
+                skillGainPopupCanvasGroup,
+                skillGainPopupTransform,
+                skillGainPopupIconText,
+                skillGainPopupText);
         }
 
-        CachePopupBasePosition();
-
-        if (skillGainPopupTransform != null && hasPopupBasePosition)
-        {
-            skillGainPopupTransform.anchoredPosition = skillGainPopupBasePosition;
-        }
-
-        if (skillGainPopupCanvasGroup != null)
-        {
-            skillGainPopupCanvasGroup.alpha = 0f;
-        }
-
-        if (skillGainPopupRoot != null)
-        {
-            skillGainPopupRoot.SetActive(false);
-        }
+        popupController.HideImmediate(this);
     }
 
     private void ClearPendingSkillFeedback()
     {
         pendingFeedbackSkillId = string.Empty;
-        pendingFeedbackDelta = 0f;
-        pendingFeedbackNewPercent = 0f;
+        pendingFeedbackResult = null;
     }
 
-    private SkillRowUI GetOrCreateRow(int index)
+    private List<SkillArchetypeDefinition> GetSelectableArchetypes()
     {
-        while (spawnedRows.Count <= index)
+        List<SkillArchetypeDefinition> archetypes = panelCoordinator != null
+            ? panelCoordinator.GetSelectableArchetypes()
+            : new List<SkillArchetypeDefinition>(SkillArchetypeCatalog.GetPlayerSelectableDefinitions());
+
+        if (archetypes.Count > 0 && !SkillArchetypeCatalog.IsSelectable(selectedCreateArchetypeId))
         {
-            SkillRowUI row = Instantiate(skillRowTemplate, skillsListContainer);
-            row.gameObject.SetActive(false);
-            spawnedRows.Add(row);
+            selectedCreateArchetypeId = archetypes[0].Id;
         }
 
-        return spawnedRows[index];
+        return archetypes;
     }
 
-    private TextMeshProUGUI GetOrCreateRadarLabel(int index)
+    private int GetSelectedArchetypeIndex(List<SkillArchetypeDefinition> archetypes, string archetypeId)
     {
-        while (spawnedRadarLabels.Count <= index)
+        if (archetypes == null || archetypes.Count == 0)
         {
-            TextMeshProUGUI label = Instantiate(radarLabelTemplate, radarLabelsRoot);
-            label.gameObject.SetActive(false);
-            spawnedRadarLabels.Add(label);
+            return 0;
         }
 
-        return spawnedRadarLabels[index];
-    }
-
-    private void HideUnusedRadarLabels(int usedCount)
-    {
-        for (int i = usedCount; i < spawnedRadarLabels.Count; i++)
+        for (int i = 0; i < archetypes.Count; i++)
         {
-            if (spawnedRadarLabels[i] != null)
+            if (archetypes[i] != null && archetypes[i].Id == SkillArchetypeCatalog.NormalizeArchetypeId(archetypeId))
             {
-                spawnedRadarLabels[i].gameObject.SetActive(false);
+                return i;
+            }
+        }
+
+        return 0;
+    }
+
+    private string GetFirstSelectableArchetypeId()
+    {
+        List<SkillArchetypeDefinition> archetypes = GetSelectableArchetypes();
+        return archetypes.Count > 0 ? archetypes[0].Id : SkillArchetypeCatalog.Logic;
+    }
+
+    private void EnsureArchetypePickerUi()
+    {
+        if (archetypePickerRoot != null || panelRoot == null)
+        {
+            return;
+        }
+
+        Transform skillsCard = panelRoot.transform.Find("SkillsCard");
+        if (skillsCard == null)
+        {
+            return;
+        }
+
+        GameObject pickerObject = new GameObject("ArchetypePicker", typeof(RectTransform), typeof(LayoutElement), typeof(GridLayoutGroup));
+        pickerObject.transform.SetParent(skillsCard, false);
+
+        LayoutElement pickerLayout = pickerObject.GetComponent<LayoutElement>();
+        pickerLayout.preferredHeight = 248f;
+
+        archetypePickerRoot = pickerObject.GetComponent<RectTransform>();
+        archetypePickerGrid = pickerObject.GetComponent<GridLayoutGroup>();
+        archetypePickerGrid.cellSize = new Vector2(150f, 74f);
+        archetypePickerGrid.spacing = new Vector2(10f, 10f);
+        archetypePickerGrid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        archetypePickerGrid.constraintCount = 2;
+        archetypePickerGrid.startCorner = GridLayoutGroup.Corner.UpperLeft;
+        archetypePickerGrid.startAxis = GridLayoutGroup.Axis.Horizontal;
+        archetypePickerGrid.childAlignment = TextAnchor.UpperCenter;
+
+        Transform inputTransform = skillsCard.Find("SkillNameInput");
+        int siblingIndex = inputTransform != null ? inputTransform.GetSiblingIndex() + 1 : 0;
+        pickerObject.transform.SetSiblingIndex(siblingIndex);
+    }
+
+    private void RefreshArchetypePicker()
+    {
+        EnsureArchetypePickerUi();
+        List<SkillArchetypeDefinition> archetypes = GetSelectableArchetypes();
+        if (archetypePickerRoot == null)
+        {
+            return;
+        }
+
+        if (archetypes.Count > 0 && !SkillArchetypeCatalog.IsSelectable(selectedCreateArchetypeId))
+        {
+            selectedCreateArchetypeId = archetypes[0].Id;
+        }
+
+        for (int i = 0; i < archetypes.Count; i++)
+        {
+            SkillArchetypeCardUI card = EnsureArchetypeCard(spawnedArchetypeCards, i, archetypePickerRoot, "CreateArchetypeCard");
+            if (card == null)
+            {
+                continue;
+            }
+
+            card.Bind(archetypes[i], archetypes[i].Id == selectedCreateArchetypeId, OnSelectCreateArchetype);
+        }
+
+        HideUnusedArchetypeCards(spawnedArchetypeCards, archetypes.Count);
+    }
+
+    private void OnSelectCreateArchetype(string archetypeId)
+    {
+        if (!SkillArchetypeCatalog.IsSelectable(archetypeId))
+        {
+            return;
+        }
+
+        selectedCreateArchetypeId = SkillArchetypeCatalog.NormalizeArchetypeId(archetypeId);
+        UpdateIconPreview();
+    }
+
+    private void EnsureArchetypeEditPopupUi()
+    {
+        if (archetypeEditPopupRoot != null || panelRoot == null)
+        {
+            return;
+        }
+
+        GameObject overlayObject = new GameObject("ArchetypeEditPopup", typeof(RectTransform), typeof(Image));
+        overlayObject.transform.SetParent(panelRoot.transform, false);
+        RectTransform overlayRect = overlayObject.GetComponent<RectTransform>();
+        overlayRect.anchorMin = Vector2.zero;
+        overlayRect.anchorMax = Vector2.one;
+        overlayRect.offsetMin = Vector2.zero;
+        overlayRect.offsetMax = Vector2.zero;
+        Image overlayImage = overlayObject.GetComponent<Image>();
+        overlayImage.color = new Color(0f, 0f, 0f, 0.72f);
+        overlayObject.SetActive(false);
+        archetypeEditPopupRoot = overlayObject;
+
+        GameObject cardObject = new GameObject("PopupCard", typeof(RectTransform), typeof(Image), typeof(VerticalLayoutGroup));
+        cardObject.transform.SetParent(overlayObject.transform, false);
+        RectTransform cardRect = cardObject.GetComponent<RectTransform>();
+        cardRect.anchorMin = new Vector2(0.5f, 0.5f);
+        cardRect.anchorMax = new Vector2(0.5f, 0.5f);
+        cardRect.pivot = new Vector2(0.5f, 0.5f);
+        cardRect.sizeDelta = new Vector2(640f, 560f);
+        Image cardImage = cardObject.GetComponent<Image>();
+        cardImage.color = new Color(0.10f, 0.14f, 0.20f, 0.98f);
+        VerticalLayoutGroup cardLayout = cardObject.GetComponent<VerticalLayoutGroup>();
+        cardLayout.padding = new RectOffset(22, 22, 22, 22);
+        cardLayout.spacing = 14f;
+        cardLayout.childControlHeight = true;
+        cardLayout.childControlWidth = true;
+        cardLayout.childForceExpandHeight = false;
+        cardLayout.childForceExpandWidth = true;
+
+        archetypeEditPopupTitleText = CreatePanelText("Title", cardObject.transform, 26f, TextAlignmentOptions.Center);
+
+        GameObject gridObject = new GameObject("Cards", typeof(RectTransform), typeof(LayoutElement), typeof(GridLayoutGroup));
+        gridObject.transform.SetParent(cardObject.transform, false);
+        LayoutElement gridLayoutElement = gridObject.GetComponent<LayoutElement>();
+        gridLayoutElement.preferredHeight = 348f;
+        archetypeEditPopupCardsRoot = gridObject.GetComponent<RectTransform>();
+        archetypeEditPopupGrid = gridObject.GetComponent<GridLayoutGroup>();
+        archetypeEditPopupGrid.cellSize = new Vector2(164f, 82f);
+        archetypeEditPopupGrid.spacing = new Vector2(10f, 10f);
+        archetypeEditPopupGrid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        archetypeEditPopupGrid.constraintCount = 2;
+
+        GameObject footerObject = new GameObject("Footer", typeof(RectTransform), typeof(HorizontalLayoutGroup));
+        footerObject.transform.SetParent(cardObject.transform, false);
+        HorizontalLayoutGroup footerLayout = footerObject.GetComponent<HorizontalLayoutGroup>();
+        footerLayout.spacing = 12f;
+        footerLayout.childControlHeight = true;
+        footerLayout.childControlWidth = true;
+        footerLayout.childForceExpandWidth = true;
+
+        archetypeEditPopupCloseButton = CreatePanelButton("CancelButton", footerObject.transform, "Отмена", out _);
+        archetypeEditPopupConfirmButton = CreatePanelButton("ConfirmButton", footerObject.transform, "Применить", out archetypeEditPopupConfirmButtonText);
+        if (archetypeEditPopupCloseButton != null)
+        {
+            archetypeEditPopupCloseButton.onClick.RemoveAllListeners();
+            archetypeEditPopupCloseButton.onClick.AddListener(CloseArchetypeEditPopup);
+        }
+
+        if (archetypeEditPopupConfirmButton != null)
+        {
+            archetypeEditPopupConfirmButton.onClick.RemoveAllListeners();
+            archetypeEditPopupConfirmButton.onClick.AddListener(ConfirmArchetypeEdit);
+        }
+    }
+
+    private void OpenArchetypeEditPopup(SkillEntry skill)
+    {
+        EnsureArchetypeEditPopupUi();
+        if (skill == null || archetypeEditPopupRoot == null)
+        {
+            return;
+        }
+
+        editingSkillId = skill.id;
+        pendingEditArchetypeId = SkillArchetypeCatalog.IsSelectable(skill.archetypeId)
+            ? SkillArchetypeCatalog.NormalizeArchetypeId(skill.archetypeId)
+            : GetFirstSelectableArchetypeId();
+
+        if (archetypeEditPopupTitleText != null)
+        {
+            archetypeEditPopupTitleText.text = $"Тип навыка: {skill.name}";
+        }
+
+        archetypeEditPopupRoot.SetActive(true);
+        RefreshArchetypeEditPopup();
+    }
+
+    private void RefreshArchetypeEditPopup()
+    {
+        if (archetypeEditPopupRoot == null || !archetypeEditPopupRoot.activeSelf)
+        {
+            return;
+        }
+
+        List<SkillArchetypeDefinition> archetypes = GetSelectableArchetypes();
+        for (int i = 0; i < archetypes.Count; i++)
+        {
+            SkillArchetypeCardUI card = EnsureArchetypeCard(spawnedArchetypePopupCards, i, archetypeEditPopupCardsRoot, "EditArchetypeCard");
+            if (card == null)
+            {
+                continue;
+            }
+
+            card.Bind(archetypes[i], archetypes[i].Id == pendingEditArchetypeId, OnSelectEditArchetype);
+        }
+
+        HideUnusedArchetypeCards(spawnedArchetypePopupCards, archetypes.Count);
+        if (archetypeEditPopupConfirmButton != null)
+        {
+            archetypeEditPopupConfirmButton.interactable =
+                !string.IsNullOrEmpty(editingSkillId) &&
+                SkillArchetypeCatalog.IsSelectable(pendingEditArchetypeId);
+        }
+    }
+
+    private void OnSelectEditArchetype(string archetypeId)
+    {
+        if (!SkillArchetypeCatalog.IsSelectable(archetypeId))
+        {
+            return;
+        }
+
+        pendingEditArchetypeId = SkillArchetypeCatalog.NormalizeArchetypeId(archetypeId);
+        RefreshArchetypeEditPopup();
+    }
+
+    private void ConfirmArchetypeEdit()
+    {
+        if (panelCoordinator == null || string.IsNullOrEmpty(editingSkillId))
+        {
+            return;
+        }
+
+        SkillsPanelActionResult result = panelCoordinator.ChangeSkillArchetype(editingSkillId, pendingEditArchetypeId);
+        SetStatus(result.Message);
+        if (!result.Success)
+        {
+            return;
+        }
+
+        CloseArchetypeEditPopup();
+        RefreshUI();
+    }
+
+    private void CloseArchetypeEditPopup()
+    {
+        if (archetypeEditPopupRoot != null)
+        {
+            archetypeEditPopupRoot.SetActive(false);
+        }
+
+        editingSkillId = string.Empty;
+        pendingEditArchetypeId = string.Empty;
+    }
+
+    private SkillArchetypeCardUI EnsureArchetypeCard(List<SkillArchetypeCardUI> cards, int index, Transform parent, string objectNamePrefix)
+    {
+        if (cards == null || parent == null || index < 0)
+        {
+            return null;
+        }
+
+        while (cards.Count <= index)
+        {
+            SkillArchetypeCardUI createdCard = CreateArchetypeCard(parent, objectNamePrefix + "_" + cards.Count);
+            cards.Add(createdCard);
+        }
+
+        return cards[index];
+    }
+
+    private SkillArchetypeCardUI CreateArchetypeCard(Transform parent, string objectName)
+    {
+        if (parent == null)
+        {
+            return null;
+        }
+
+        GameObject cardObject = new GameObject(objectName, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement), typeof(SkillArchetypeCardUI));
+        cardObject.transform.SetParent(parent, false);
+        LayoutElement cardLayout = cardObject.GetComponent<LayoutElement>();
+        cardLayout.preferredWidth = 150f;
+        cardLayout.preferredHeight = 74f;
+        cardObject.GetComponent<Image>().color = new Color(0.20f, 0.24f, 0.34f, 0.92f);
+
+        GameObject outlineObject = new GameObject("Outline", typeof(RectTransform), typeof(Image));
+        outlineObject.transform.SetParent(cardObject.transform, false);
+        RectTransform outlineRect = outlineObject.GetComponent<RectTransform>();
+        outlineRect.anchorMin = Vector2.zero;
+        outlineRect.anchorMax = Vector2.one;
+        outlineRect.offsetMin = new Vector2(2f, 2f);
+        outlineRect.offsetMax = new Vector2(-2f, -2f);
+        Image outlineImage = outlineObject.GetComponent<Image>();
+        outlineImage.color = new Color(0.48f, 0.55f, 0.70f, 0.75f);
+        outlineImage.raycastTarget = false;
+
+        GameObject iconObject = new GameObject("Icon", typeof(RectTransform));
+        iconObject.transform.SetParent(cardObject.transform, false);
+        RectTransform iconRect = iconObject.GetComponent<RectTransform>();
+        iconRect.anchorMin = new Vector2(0f, 0.5f);
+        iconRect.anchorMax = new Vector2(0f, 0.5f);
+        iconRect.pivot = new Vector2(0f, 0.5f);
+        iconRect.anchoredPosition = new Vector2(12f, 0f);
+        iconRect.sizeDelta = new Vector2(42f, 42f);
+        TextMeshProUGUI iconText = iconObject.AddComponent<TextMeshProUGUI>();
+        iconText.fontSize = 20f;
+        iconText.alignment = TextAlignmentOptions.Center;
+        iconText.textWrappingMode = TextWrappingModes.NoWrap;
+
+        GameObject nameObject = new GameObject("Name", typeof(RectTransform));
+        nameObject.transform.SetParent(cardObject.transform, false);
+        RectTransform nameRect = nameObject.GetComponent<RectTransform>();
+        nameRect.anchorMin = new Vector2(0f, 0f);
+        nameRect.anchorMax = new Vector2(1f, 1f);
+        nameRect.offsetMin = new Vector2(58f, 8f);
+        nameRect.offsetMax = new Vector2(-10f, -8f);
+        TextMeshProUGUI nameText = nameObject.AddComponent<TextMeshProUGUI>();
+        nameText.fontSize = 15f;
+        nameText.alignment = TextAlignmentOptions.MidlineLeft;
+        nameText.textWrappingMode = TextWrappingModes.Normal;
+
+        SkillArchetypeCardUI card = cardObject.GetComponent<SkillArchetypeCardUI>();
+        card.backgroundImage = cardObject.GetComponent<Image>();
+        card.outlineImage = outlineImage;
+        card.iconText = iconText;
+        card.nameText = nameText;
+        card.button = cardObject.GetComponent<Button>();
+        return card;
+    }
+
+    private void HideUnusedArchetypeCards(List<SkillArchetypeCardUI> cards, int usedCount)
+    {
+        for (int i = usedCount; i < cards.Count; i++)
+        {
+            if (cards[i] != null)
+            {
+                cards[i].gameObject.SetActive(false);
             }
         }
     }
 
-    private Color GetColorForIndex(int index)
+    private TextMeshProUGUI CreatePanelText(string name, Transform parent, float fontSize, TextAlignmentOptions alignment)
     {
-        return ChartPalette[index % ChartPalette.Length];
+        GameObject textObject = new GameObject(name, typeof(RectTransform));
+        textObject.transform.SetParent(parent, false);
+        TextMeshProUGUI text = textObject.AddComponent<TextMeshProUGUI>();
+        text.fontSize = fontSize;
+        text.alignment = alignment;
+        text.textWrappingMode = TextWrappingModes.Normal;
+        return text;
     }
 
-    private Color GetColorForSkill(SkillEntry skill)
+    private Button CreatePanelButton(string name, Transform parent, string labelText, out TextMeshProUGUI label)
     {
-        if (skill == null || string.IsNullOrEmpty(skill.id))
+        GameObject buttonObject = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button), typeof(LayoutElement));
+        buttonObject.transform.SetParent(parent, false);
+        LayoutElement layoutElement = buttonObject.GetComponent<LayoutElement>();
+        layoutElement.preferredHeight = 46f;
+        layoutElement.preferredWidth = 0f;
+        Image buttonImage = buttonObject.GetComponent<Image>();
+        buttonImage.color = new Color(0.22f, 0.31f, 0.44f, 0.98f);
+
+        label = CreatePanelText("Label", buttonObject.transform, 18f, TextAlignmentOptions.Center);
+        RectTransform labelRect = label.rectTransform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+        label.text = labelText;
+        label.textWrappingMode = TextWrappingModes.NoWrap;
+
+        return buttonObject.GetComponent<Button>();
+    }
+
+    private void CacheResponsiveReferences()
+    {
+        if (responsiveReferencesCached || panelRoot == null)
         {
-            return GetColorForIndex(0);
+            return;
         }
 
-        int hash = 17;
-        for (int i = 0; i < skill.id.Length; i++)
+        Transform panelTransform = panelRoot.transform;
+        skillsCardLayoutGroup = panelTransform.Find("SkillsCard")?.GetComponent<VerticalLayoutGroup>();
+        heroCardLayoutElement = panelTransform.Find("SkillsCard/HeroCard")?.GetComponent<LayoutElement>();
+        heroCardLayoutGroup = panelTransform.Find("SkillsCard/HeroCard")?.GetComponent<VerticalLayoutGroup>();
+        chartContainerLayoutElement = panelTransform.Find("SkillsCard/ChartContainer")?.GetComponent<LayoutElement>();
+        chartContainerLayoutGroup = panelTransform.Find("SkillsCard/ChartContainer")?.GetComponent<VerticalLayoutGroup>();
+        skillNameInputLayoutElement = panelTransform.Find("SkillsCard/SkillNameInput")?.GetComponent<LayoutElement>();
+        iconRowLayoutElement = panelTransform.Find("SkillsCard/IconRow")?.GetComponent<LayoutElement>();
+        iconRowLayoutGroup = panelTransform.Find("SkillsCard/IconRow")?.GetComponent<HorizontalLayoutGroup>();
+        skillsListLayoutGroup = panelTransform.Find("SkillsCard/SkillsList")?.GetComponent<VerticalLayoutGroup>();
+        closeButtonLayoutElement = closeButton != null ? closeButton.GetComponent<LayoutElement>() : panelTransform.Find("SkillsCard/HeaderRow/CloseButton")?.GetComponent<LayoutElement>();
+        heroActionButtonLayoutElement = heroActionButton != null ? heroActionButton.GetComponent<LayoutElement>() : panelTransform.Find("SkillsCard/HeroCard/HeroProgressBlock/HeroBottomRow/HeroActionButton")?.GetComponent<LayoutElement>();
+        addSkillButtonLayoutElement = addSkillButton != null ? addSkillButton.GetComponent<LayoutElement>() : panelTransform.Find("SkillsCard/IconRow/AddSkillButton")?.GetComponent<LayoutElement>();
+
+        responsiveReferencesCached = true;
+    }
+
+    private void CacheResponsiveDefaults()
+    {
+        if (responsiveDefaultsCached)
         {
-            hash = (hash * 31) + skill.id[i];
+            return;
         }
 
-        if (hash == int.MinValue)
+        CacheResponsiveReferences();
+
+        RegisterFontDefault(heroSkillNameText);
+        RegisterFontDefault(heroSkillMetaText);
+        RegisterFontDefault(heroProgressText);
+        RegisterFontDefault(heroHintText);
+        RegisterFontDefault(heroActionButtonText);
+        RegisterFontDefault(chartTitleText);
+        RegisterFontDefault(chartEmptyStateText);
+        RegisterFontDefault(addSkillButtonText);
+        RegisterFontDefault(panelStatusText);
+        RegisterFontDefault(emptyStateText);
+        RegisterFontDefault(panelSelectedSkillText);
+        RegisterFontDefault(focusSkillStatusText);
+
+        RegisterLayoutElementDefault(heroCardLayoutElement);
+        RegisterLayoutElementDefault(chartContainerLayoutElement);
+        RegisterLayoutElementDefault(skillNameInputLayoutElement);
+        RegisterLayoutElementDefault(iconRowLayoutElement);
+        RegisterLayoutElementDefault(closeButtonLayoutElement);
+        RegisterLayoutElementDefault(heroActionButtonLayoutElement);
+        RegisterLayoutElementDefault(addSkillButtonLayoutElement);
+
+        RegisterLayoutGroupDefault(skillsCardLayoutGroup);
+        RegisterLayoutGroupDefault(heroCardLayoutGroup);
+        RegisterLayoutGroupDefault(chartContainerLayoutGroup);
+        RegisterLayoutGroupDefault(iconRowLayoutGroup);
+        RegisterLayoutGroupDefault(skillsListLayoutGroup);
+
+        responsiveDefaultsCached = true;
+    }
+
+    private void RegisterFontDefault(TextMeshProUGUI text)
+    {
+        if (text == null || defaultFontSizes.ContainsKey(text))
         {
-            hash = 0;
+            return;
         }
 
-        return GetColorForIndex(Mathf.Abs(hash));
+        defaultFontSizes[text] = text.fontSize;
+    }
+
+    private void RegisterLayoutElementDefault(LayoutElement layoutElement)
+    {
+        if (layoutElement == null || defaultLayoutElements.ContainsKey(layoutElement))
+        {
+            return;
+        }
+
+        defaultLayoutElements[layoutElement] = new LayoutElementDefaults
+        {
+            PreferredWidth = layoutElement.preferredWidth,
+            PreferredHeight = layoutElement.preferredHeight
+        };
+    }
+
+    private void RegisterLayoutGroupDefault(HorizontalOrVerticalLayoutGroup layoutGroup)
+    {
+        if (layoutGroup == null || defaultLayoutGroups.ContainsKey(layoutGroup))
+        {
+            return;
+        }
+
+        RectOffset padding = layoutGroup.padding;
+        defaultLayoutGroups[layoutGroup] = new LayoutGroupDefaults
+        {
+            Spacing = layoutGroup.spacing,
+            Left = padding != null ? padding.left : 0,
+            Right = padding != null ? padding.right : 0,
+            Top = padding != null ? padding.top : 0,
+            Bottom = padding != null ? padding.bottom : 0
+        };
+    }
+
+    private void ApplyResponsiveLayout()
+    {
+        if (panelRoot == null)
+        {
+            return;
+        }
+
+        CacheResponsiveDefaults();
+        SkillsResponsiveProfile responsiveProfile = GetResponsiveProfile();
+
+        ApplyLayoutGroupScale(skillsCardLayoutGroup, responsiveProfile.SpacingScale, responsiveProfile.PaddingScale);
+        ApplyLayoutElementScale(heroCardLayoutElement, 1f, responsiveProfile.HeightScale);
+        ApplyLayoutGroupScale(heroCardLayoutGroup, responsiveProfile.SpacingScale, responsiveProfile.PaddingScale);
+        ApplyLayoutElementScale(chartContainerLayoutElement, 1f, responsiveProfile.ChartHeightScale);
+        ApplyLayoutGroupScale(chartContainerLayoutGroup, responsiveProfile.SpacingScale, responsiveProfile.PaddingScale);
+        ApplyLayoutElementScale(skillNameInputLayoutElement, 1f, responsiveProfile.InputHeightScale);
+        ApplyLayoutElementScale(iconRowLayoutElement, 1f, responsiveProfile.IconRowHeightScale);
+        ApplyLayoutGroupScale(iconRowLayoutGroup, responsiveProfile.SpacingScale, 1f);
+        ApplyLayoutGroupScale(skillsListLayoutGroup, responsiveProfile.SpacingScale, responsiveProfile.PaddingScale);
+        ApplyLayoutElementScale(closeButtonLayoutElement, responsiveProfile.HeaderScale, responsiveProfile.ButtonHeightScale);
+        ApplyLayoutElementScale(heroActionButtonLayoutElement, responsiveProfile.ButtonWidthScale, responsiveProfile.ButtonHeightScale);
+        ApplyLayoutElementScale(addSkillButtonLayoutElement, responsiveProfile.ButtonWidthScale, responsiveProfile.ButtonHeightScale);
+
+        ApplyFontScale(heroSkillNameText, responsiveProfile.FontScale);
+        ApplyFontScale(heroSkillMetaText, responsiveProfile.FontScale);
+        ApplyFontScale(heroProgressText, responsiveProfile.FontScale);
+        ApplyFontScale(heroHintText, responsiveProfile.FontScale);
+        ApplyFontScale(heroActionButtonText, responsiveProfile.FontScale);
+        ApplyFontScale(chartTitleText, responsiveProfile.FontScale);
+        ApplyFontScale(chartEmptyStateText, responsiveProfile.FontScale);
+        ApplyFontScale(addSkillButtonText, responsiveProfile.FontScale);
+        ApplyFontScale(panelStatusText, responsiveProfile.FontScale);
+        ApplyFontScale(emptyStateText, responsiveProfile.FontScale);
+        ApplyFontScale(panelSelectedSkillText, responsiveProfile.FontScale);
+        ApplyFontScale(focusSkillStatusText, responsiveProfile.FontScale);
+
+        if (iconPreviewText != null)
+        {
+            iconPreviewText.fontSize = 18f * responsiveProfile.FontScale;
+            iconPreviewText.enabled = true;
+            DisableInlineIconOverlay(iconPreviewText);
+        }
+
+        if (heroSkillIconText != null)
+        {
+            string currentIcon = heroSkillIconText.text;
+            float baseFontSize = !string.IsNullOrEmpty(currentIcon) && currentIcon.Length > 2 ? 28f : 38f;
+            heroSkillIconText.fontSize = baseFontSize * responsiveProfile.FontScale;
+            UiIconViewUtility.ApplyIconToTextSlot(heroSkillIconText, currentIcon);
+        }
+
+        if (skillRowTemplate != null)
+        {
+            skillRowTemplate.RefreshResponsiveLayout();
+        }
+
+        ApplyArchetypeCardLayout(responsiveProfile);
+
+        for (int i = 0; i < spawnedRows.Count; i++)
+        {
+            if (spawnedRows[i] != null)
+            {
+                spawnedRows[i].RefreshResponsiveLayout();
+            }
+        }
+    }
+
+    private void ApplyArchetypeCardLayout(SkillsResponsiveProfile responsiveProfile)
+    {
+        Vector2 pickerCellSize = new Vector2(150f, 74f);
+        Vector2 popupCellSize = new Vector2(164f, 82f);
+        if (responsiveProfile.FontScale < 0.9f)
+        {
+            pickerCellSize = new Vector2(138f, 68f);
+            popupCellSize = new Vector2(148f, 76f);
+        }
+        else if (responsiveProfile.FontScale < 1f)
+        {
+            pickerCellSize = new Vector2(144f, 72f);
+            popupCellSize = new Vector2(156f, 80f);
+        }
+
+        if (archetypePickerGrid != null)
+        {
+            archetypePickerGrid.cellSize = pickerCellSize;
+        }
+
+        if (archetypeEditPopupGrid != null)
+        {
+            archetypeEditPopupGrid.cellSize = popupCellSize;
+        }
+    }
+
+    private void ApplyFontScale(TextMeshProUGUI text, float scale)
+    {
+        if (text == null || !defaultFontSizes.TryGetValue(text, out float defaultSize))
+        {
+            return;
+        }
+
+        text.fontSize = defaultSize * scale;
+    }
+
+    private void ApplyLayoutElementScale(LayoutElement layoutElement, float widthScale, float heightScale)
+    {
+        if (layoutElement == null || !defaultLayoutElements.TryGetValue(layoutElement, out LayoutElementDefaults defaults))
+        {
+            return;
+        }
+
+        if (defaults.PreferredWidth >= 0f)
+        {
+            layoutElement.preferredWidth = defaults.PreferredWidth * widthScale;
+        }
+
+        if (defaults.PreferredHeight >= 0f)
+        {
+            layoutElement.preferredHeight = defaults.PreferredHeight * heightScale;
+        }
+    }
+
+    private void ApplyLayoutGroupScale(HorizontalOrVerticalLayoutGroup layoutGroup, float spacingScale, float paddingScale)
+    {
+        if (layoutGroup == null || !defaultLayoutGroups.TryGetValue(layoutGroup, out LayoutGroupDefaults defaults))
+        {
+            return;
+        }
+
+        layoutGroup.spacing = defaults.Spacing * spacingScale;
+
+        RectOffset padding = layoutGroup.padding ?? new RectOffset();
+        padding.left = Mathf.RoundToInt(defaults.Left * paddingScale);
+        padding.right = Mathf.RoundToInt(defaults.Right * paddingScale);
+        padding.top = Mathf.RoundToInt(defaults.Top * paddingScale);
+        padding.bottom = Mathf.RoundToInt(defaults.Bottom * paddingScale);
+        layoutGroup.padding = padding;
+    }
+
+    private void DisableInlineIconOverlay(TextMeshProUGUI textSlot)
+    {
+        if (textSlot == null)
+        {
+            return;
+        }
+
+        Transform overlayTransform = textSlot.transform.Find("IconSprite");
+        if (overlayTransform == null)
+        {
+            return;
+        }
+
+        overlayTransform.gameObject.SetActive(false);
+        Image overlayImage = overlayTransform.GetComponent<Image>();
+        if (overlayImage != null)
+        {
+            overlayImage.enabled = false;
+            overlayImage.sprite = null;
+        }
+    }
+
+    private float GetReferenceCanvasHeight()
+    {
+        RectTransform canvasRect = transform as RectTransform;
+        if (canvasRect != null && canvasRect.rect.height > 0.01f)
+        {
+            return canvasRect.rect.height;
+        }
+
+        if (panelRoot != null)
+        {
+            RectTransform panelRect = panelRoot.transform as RectTransform;
+            if (panelRect != null && panelRect.rect.height > 0.01f)
+            {
+                return panelRect.rect.height;
+            }
+        }
+
+        return Screen.height;
+    }
+
+    private SkillsResponsiveProfile GetResponsiveProfile()
+    {
+        return SkillsPanelPresenter.BuildResponsiveProfile(GetReferenceCanvasHeight());
     }
 
     private void SetStatus(string message)

@@ -12,10 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f5feecbc180f06840af4d629f9f0ae48, type: 3}
   m_Name: BalanceConfig
   m_EditorClassIdentifier: Assembly-CSharp::BalanceConfig
-  startingHunger: 50
+  startingHunger: 70
   startingMood: 70
   startingEnergy: 100
-  hungerDrainPerSecond: 1
+  hungerDrainPerSecond: 0.001
   lowHungerMoodThreshold: 30
   lowEnergyMoodThreshold: 20
   moodDecayPerSecondWhenHungry: 0.01
@@ -26,15 +26,16 @@ MonoBehaviour:
   snackRestore: 15
   mealRestore: 40
   premiumRestore: 80
-  startingCoins: 0
+  startingCoins: 50
   foodPrice: 10
   snackPrice: 5
   mealPrice: 20
   premiumPrice: 50
-  baseWorkReward: 3
   baseFocusReward: 10
   baseFocusDuration: 10
   focusEnergyCostPerMinute: 1
+  focusEnergyRewardPerMinute: 0.35
+  focusMoodRewardPerMinute: 0.25
   lowEnergyThreshold: 20
   lowEnergyRewardMultiplier: 0.8
   skillProgressPerMinute: 0.2
@@ -46,17 +47,125 @@ MonoBehaviour:
   startingLevel: 1
   startingXp: 0
   xpToNextLevel: 10
-  workXpGain: 1
   focusXpGain: 5
   buyXpGain: 3
   feedXpGain: 2
-  buyUnlockLevel: 2
   roomUpgrade1Cost: 25
   roomUpgrade2Cost: 50
   roomUpgrade3Cost: 150
   roomUpgrade1UnlockLevel: 2
   roomUpgrade2UnlockLevel: 4
   roomUpgrade3UnlockLevel: 7
-  reviveCost: 50
   dailyRewardCoins: 20
   offlineHungerCapHours: 8
+  bossDefinitions:
+  - id: boss_01
+    name: Boss 1
+    targetLevel: 1
+    bossPower: 100
+    difficultyTier: Tutorial
+    visualWebValues01:
+    - 0.32
+    - 0.24
+    - 0.28
+    - 0.26
+    - 0.34
+  - id: boss_02
+    name: Boss 2
+    targetLevel: 2
+    bossPower: 260
+    difficultyTier: Beginner
+    visualWebValues01:
+    - 0.38
+    - 0.28
+    - 0.33
+    - 0.31
+    - 0.4
+  - id: boss_03
+    name: Boss 3
+    targetLevel: 3
+    bossPower: 516
+    difficultyTier: Early
+    visualWebValues01:
+    - 0.45
+    - 0.34
+    - 0.38
+    - 0.36
+    - 0.46
+  - id: boss_04
+    name: Boss 4
+    targetLevel: 4
+    bossPower: 926
+    difficultyTier: Rising
+    visualWebValues01:
+    - 0.52
+    - 0.41
+    - 0.47
+    - 0.42
+    - 0.55
+  - id: boss_05
+    name: Boss 5
+    targetLevel: 5
+    bossPower: 1582
+    difficultyTier: Stable
+    visualWebValues01:
+    - 0.61
+    - 0.48
+    - 0.55
+    - 0.51
+    - 0.62
+  - id: boss_06
+    name: Boss 6
+    targetLevel: 6
+    bossPower: 2632
+    difficultyTier: Mid
+    visualWebValues01:
+    - 0.7
+    - 0.56
+    - 0.64
+    - 0.6
+    - 0.72
+  - id: boss_07
+    name: Boss 7
+    targetLevel: 7
+    bossPower: 4312
+    difficultyTier: Advanced
+    visualWebValues01:
+    - 0.79
+    - 0.65
+    - 0.73
+    - 0.68
+    - 0.81
+  - id: boss_08
+    name: Boss 8
+    targetLevel: 8
+    bossPower: 7000
+    difficultyTier: Expert
+    visualWebValues01:
+    - 0.86
+    - 0.74
+    - 0.82
+    - 0.77
+    - 0.88
+  - id: boss_09
+    name: Boss 9
+    targetLevel: 9
+    bossPower: 11300
+    difficultyTier: Master
+    visualWebValues01:
+    - 0.92
+    - 0.82
+    - 0.9
+    - 0.85
+    - 0.94
+  - id: boss_10
+    name: Boss 10
+    targetLevel: 10
+    bossPower: 18180
+    difficultyTier: Endgame
+    visualWebValues01:
+    - 0.98
+    - 0.91
+    - 0.96
+    - 0.93
+    - 1

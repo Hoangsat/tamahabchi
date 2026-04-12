@@ -11,7 +11,6 @@ public sealed class CoreLoopActionCoordinatorCallbacks
     public Action UpdateOnboardingUi;
     public Action UpdateUi;
     public Action SaveGame;
-    public Action<int, bool> AddXp;
     public Action<string> ShowFeedback;
     public Action<MissionClaimResult, bool> ApplyMissionRewards;
 }
@@ -67,11 +66,11 @@ public sealed class CoreLoopActionCoordinator
 
     public ShopPurchaseResult TryFeedItem(string itemId, float amount)
     {
-        if (petData == null || petData.isDead)
+        if (petData == null)
         {
-            const string deadMessage = "Pet is dead";
-            callbacks.ShowFeedback?.Invoke(deadMessage);
-            return ShopPurchaseResult.Fail(deadMessage);
+            const string unavailableMessage = "Pet unavailable";
+            callbacks.ShowFeedback?.Invoke(unavailableMessage);
+            return ShopPurchaseResult.Fail(unavailableMessage);
         }
 
         string itemName = FormatItemName(itemId);
@@ -84,8 +83,6 @@ public sealed class CoreLoopActionCoordinator
             callbacks.ApplyMissionRewards?.Invoke(missionSystem?.CollectCompletedRoutineRewards(), false);
             callbacks.OnInventoryChanged?.Invoke();
             callbacks.OnPetChanged?.Invoke();
-            callbacks.AddXp?.Invoke(balanceConfig.feedXpGain, true);
-
             if (onboardingData != null)
             {
                 onboardingData.didFeed = true;
@@ -110,19 +107,11 @@ public sealed class CoreLoopActionCoordinator
 
     public ShopPurchaseResult TryBuyItem(string itemId, int price)
     {
-        if (petData == null || petData.isDead)
+        if (petData == null)
         {
-            const string deadMessage = "Pet is dead";
-            callbacks.ShowFeedback?.Invoke(deadMessage);
-            return ShopPurchaseResult.Fail(deadMessage);
-        }
-
-        if (progressionSystem == null || !progressionSystem.IsBuyUnlocked())
-        {
-            string unlockMessage = $"Unlocks at level {balanceConfig.buyUnlockLevel}";
-            callbacks.ShowFeedback?.Invoke(unlockMessage);
-            callbacks.UpdateUi?.Invoke();
-            return ShopPurchaseResult.Fail(unlockMessage);
+            const string unavailableMessage = "Pet unavailable";
+            callbacks.ShowFeedback?.Invoke(unavailableMessage);
+            return ShopPurchaseResult.Fail(unavailableMessage);
         }
 
         string itemName = FormatItemName(itemId);
@@ -130,8 +119,6 @@ public sealed class CoreLoopActionCoordinator
         {
             callbacks.OnCoinsChanged?.Invoke();
             callbacks.OnInventoryChanged?.Invoke();
-            callbacks.AddXp?.Invoke(balanceConfig.buyXpGain, true);
-
             if (onboardingData != null)
             {
                 onboardingData.didBuyFood = true;
@@ -154,19 +141,11 @@ public sealed class CoreLoopActionCoordinator
 
     public ShopPurchaseResult TryBuySkin(string itemId, int price)
     {
-        if (petData == null || petData.isDead)
+        if (petData == null)
         {
-            const string deadMessage = "Pet is dead";
-            callbacks.ShowFeedback?.Invoke(deadMessage);
-            return ShopPurchaseResult.Fail(deadMessage);
-        }
-
-        if (progressionSystem == null || !progressionSystem.IsBuyUnlocked())
-        {
-            string unlockMessage = $"Unlocks at level {balanceConfig.buyUnlockLevel}";
-            callbacks.ShowFeedback?.Invoke(unlockMessage);
-            callbacks.UpdateUi?.Invoke();
-            return ShopPurchaseResult.Fail(unlockMessage);
+            const string unavailableMessage = "Pet unavailable";
+            callbacks.ShowFeedback?.Invoke(unavailableMessage);
+            return ShopPurchaseResult.Fail(unavailableMessage);
         }
 
         string itemName = FormatItemName(itemId);
@@ -174,7 +153,6 @@ public sealed class CoreLoopActionCoordinator
         {
             callbacks.OnCoinsChanged?.Invoke();
             callbacks.OnInventoryChanged?.Invoke();
-            callbacks.AddXp?.Invoke(balanceConfig.buyXpGain, true);
             string successMessage = $"Bought {itemName}";
             callbacks.ShowFeedback?.Invoke(successMessage);
             callbacks.SaveGame?.Invoke();
@@ -190,11 +168,11 @@ public sealed class CoreLoopActionCoordinator
 
     public ShopPurchaseResult TryUseConsumableItem(string itemId, float amount, ShopCategory category)
     {
-        if (petData == null || petData.isDead)
+        if (petData == null)
         {
-            const string deadMessage = "Pet is dead";
-            callbacks.ShowFeedback?.Invoke(deadMessage);
-            return ShopPurchaseResult.Fail(deadMessage);
+            const string unavailableMessage = "Pet unavailable";
+            callbacks.ShowFeedback?.Invoke(unavailableMessage);
+            return ShopPurchaseResult.Fail(unavailableMessage);
         }
 
         if (category == ShopCategory.Food)
@@ -214,7 +192,7 @@ public sealed class CoreLoopActionCoordinator
         switch (category)
         {
             case ShopCategory.Energy:
-                petSystem?.AddEnergy(amount);
+                petSystem?.ApplyCare(amount);
                 break;
             case ShopCategory.Mood:
                 petSystem?.AddMood(amount);
@@ -234,34 +212,6 @@ public sealed class CoreLoopActionCoordinator
         string successMessage = $"Used {itemName}";
         callbacks.ShowFeedback?.Invoke(successMessage);
         return ShopPurchaseResult.Success(successMessage);
-    }
-
-    public void TryWork()
-    {
-        if (petData == null)
-        {
-            return;
-        }
-
-        int workReward = GetCurrentWorkReward();
-        currencySystem?.AddCoins(workReward);
-        missionSystem?.RecordWorkAction();
-        missionSystem?.IncrementGenericMissionProgress("generic_work", 1);
-        callbacks.ApplyMissionRewards?.Invoke(missionSystem?.CollectCompletedRoutineRewards(), false);
-        callbacks.OnCoinsChanged?.Invoke();
-        callbacks.AddXp?.Invoke(balanceConfig.workXpGain, false);
-
-        if (onboardingData != null)
-        {
-            onboardingData.didWork = true;
-            callbacks.RefreshOnboardingCompletion?.Invoke();
-            callbacks.UpdateOnboardingUi?.Invoke();
-        }
-
-        callbacks.ShowFeedback?.Invoke($"+{workReward} Coins");
-        callbacks.SaveGame?.Invoke();
-        callbacks.UpdateUi?.Invoke();
-        callbacks.ShowMissionRefresh?.Invoke();
     }
 
     public ShopPurchaseResult TryUpgradeRoom()
@@ -300,22 +250,9 @@ public sealed class CoreLoopActionCoordinator
         return string.IsNullOrEmpty(GetRoomUpgradeBlockedReason());
     }
 
-    public int GetCurrentWorkReward()
-    {
-        return progressionSystem != null ? progressionSystem.GetWorkReward(balanceConfig.baseWorkReward) : 0;
-    }
-
     public int GetCurrentRoomUnlockLevel()
     {
-        if (roomData == null)
-        {
-            return 999;
-        }
-
-        if (roomData.roomLevel == 0) return balanceConfig.roomUpgrade1UnlockLevel;
-        if (roomData.roomLevel == 1) return balanceConfig.roomUpgrade2UnlockLevel;
-        if (roomData.roomLevel == 2 && maxSupportedRoomLevel > 2) return balanceConfig.roomUpgrade3UnlockLevel;
-        return 999;
+        return 0;
     }
 
     public int GetCurrentRoomUpgradeCost()
@@ -333,11 +270,6 @@ public sealed class CoreLoopActionCoordinator
 
     public string GetRoomUpgradeBlockedReason()
     {
-        if (petData == null || petData.isDead)
-        {
-            return "Pet is dead";
-        }
-
         if (roomData == null)
         {
             return "Room unavailable";
@@ -346,12 +278,6 @@ public sealed class CoreLoopActionCoordinator
         if (roomData.roomLevel >= maxSupportedRoomLevel)
         {
             return "Room is max level";
-        }
-
-        int unlockLevel = GetCurrentRoomUnlockLevel();
-        if (progressionData == null || progressionData.level < unlockLevel)
-        {
-            return $"Unlock at level {unlockLevel}";
         }
 
         int cost = GetCurrentRoomUpgradeCost();

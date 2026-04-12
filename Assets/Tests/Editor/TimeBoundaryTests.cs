@@ -84,40 +84,40 @@ public class TimeBoundaryTests
     }
 
     [Test]
-    public void PetOfflineProgress_DoesNotApplyDeathTwice()
+    public void PetOfflineProgress_AccruesNeglectTimeInsteadOfDeath()
     {
         PetData petData = new PetData
         {
             hunger = 5f,
-            mood = 50f,
+            mood = 1f,
             energy = 50f,
             statusText = "Happy",
-            hasIndependentStats = true,
-            isDead = false
+            hasIndependentStats = true
         };
 
         PetSystem petSystem = new PetSystem(petData);
+        float neglectSeconds;
 
         bool firstApply = petSystem.ApplyOfflineProgress(
             60f,
             1f,
             40f,
-            40f,
             0.5f,
-            0.5f);
+            out neglectSeconds);
 
         bool secondApply = petSystem.ApplyOfflineProgress(
             60f,
             1f,
             40f,
-            40f,
             0.5f,
-            0.5f);
+            out float secondNeglectSeconds);
 
         Assert.True(firstApply);
-        Assert.True(petData.isDead);
-        Assert.AreEqual("Dead", petData.statusText);
+        Assert.True(petSystem.IsNeglected());
+        Assert.AreEqual("Neglected", petData.statusText);
+        Assert.Greater(neglectSeconds, 0f);
         Assert.False(secondApply);
+        Assert.Greater(secondNeglectSeconds, 0f);
     }
 
     [Test]

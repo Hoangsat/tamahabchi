@@ -104,6 +104,15 @@ public class FocusSessionResultData
     public string skillIcon = string.Empty;
     public float plannedDurationSeconds = 0f;
     public float actualDurationSeconds = 0f;
+    public int skillSpReward = 0;
+    public int previousTotalSP = 0;
+    public int newTotalSP = 0;
+    public int previousLevel = 0;
+    public int newLevel = 0;
+    public float previousAxisPercent = 0f;
+    public float newAxisPercent = 0f;
+    public float previousProgressInLevel01 = 0f;
+    public float newProgressInLevel01 = 0f;
     public float previousPercent = 0f;
     public float newPercent = 0f;
     public float deltaProgress = 0f;

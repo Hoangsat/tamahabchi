@@ -27,8 +27,28 @@ public class RoomPanelUI : MonoBehaviour
     private TextMeshProUGUI heroTitleText;
     private TextMeshProUGUI heroMetaText;
     private TextMeshProUGUI heroHintText;
-    private RectTransform previewRow;
     private TextMeshProUGUI upgradeButtonLabel;
+    private VerticalLayoutGroup screenLayoutGroup;
+    private HorizontalLayoutGroup headerLayoutGroup;
+    private LayoutElement closeButtonLayoutElement;
+    private LayoutElement titleBlockLayoutElement;
+    private LayoutElement heroCardLayoutElement;
+    private VerticalLayoutGroup heroCardLayoutGroup;
+    private LayoutElement scrollRootLayoutElement;
+    private RectTransform scrollViewport;
+    private VerticalLayoutGroup scrollContentLayoutGroup;
+    private LayoutElement overviewCardLayoutElement;
+    private VerticalLayoutGroup overviewCardLayoutGroup;
+    private HorizontalLayoutGroup previewLayoutGroup;
+    private readonly Dictionary<int, TextMeshProUGUI> previewStateLevelTexts = new Dictionary<int, TextMeshProUGUI>();
+    private readonly List<LayoutElement> previewCardLayoutElements = new List<LayoutElement>();
+    private readonly List<VerticalLayoutGroup> previewCardLayoutGroups = new List<VerticalLayoutGroup>();
+    private LayoutElement nextCardLayoutElement;
+    private VerticalLayoutGroup nextCardLayoutGroup;
+    private TextMeshProUGUI nextCardTitleText;
+    private LayoutElement actionCardLayoutElement;
+    private VerticalLayoutGroup actionCardLayoutGroup;
+    private LayoutElement upgradeButtonLayoutElement;
 
     private void Awake()
     {
@@ -163,9 +183,15 @@ public class RoomPanelUI : MonoBehaviour
 
     private void RefreshUI()
     {
+        if (panelRoot != null && !panelRoot.activeSelf)
+        {
+            return;
+        }
+
         BuildUiIfNeeded();
         EnsurePanelLayering();
         ApplyScreenVisuals();
+        ApplyResponsiveLayout();
 
         if (gameManager == null)
         {
@@ -355,308 +381,268 @@ public class RoomPanelUI : MonoBehaviour
             return;
         }
 
-        panelRoot = CreatePanel(canvasRect, "RoomPanelRoot", new Color(0.05f, 0.08f, 0.14f, 0.96f));
-        RectTransform panelRect = panelRoot.GetComponent<RectTransform>();
-        panelRect.anchorMin = Vector2.zero;
-        panelRect.anchorMax = Vector2.one;
-        panelRect.offsetMin = new Vector2(0f, 146f);
-        panelRect.offsetMax = Vector2.zero;
+        RoomPanelLayoutRefs layoutRefs = RoomPanelLayoutBuilder.Build(canvasRect, ClosePanel, OnUpgradePressed);
 
-        screenRoot = CreateObject("RoomScreenRoot", panelRect);
-        screenRoot.anchorMin = Vector2.zero;
-        screenRoot.anchorMax = Vector2.one;
-        screenRoot.offsetMin = new Vector2(24f, 24f);
-        screenRoot.offsetMax = new Vector2(-24f, -24f);
+        panelRoot = layoutRefs.PanelRoot;
+        closeButton = layoutRefs.CloseButton;
+        upgradeButton = layoutRefs.UpgradeButton;
+        titleText = layoutRefs.TitleText;
+        coinsText = layoutRefs.CoinsText;
+        statusText = layoutRefs.StatusText;
+        levelText = layoutRefs.LevelText;
+        currentVisualText = layoutRefs.CurrentVisualText;
+        currentBonusText = layoutRefs.CurrentBonusText;
+        nextUpgradeText = layoutRefs.NextUpgradeText;
+        footerNoteText = layoutRefs.FooterNoteText;
+        screenRoot = layoutRefs.ScreenRoot;
+        heroCardBackgroundImage = layoutRefs.HeroCardBackgroundImage;
+        heroAccentImage = layoutRefs.HeroAccentImage;
+        heroTitleText = layoutRefs.HeroTitleText;
+        heroMetaText = layoutRefs.HeroMetaText;
+        heroHintText = layoutRefs.HeroHintText;
+        upgradeButtonLabel = layoutRefs.UpgradeButtonLabel;
+        screenLayoutGroup = layoutRefs.ScreenLayoutGroup;
+        headerLayoutGroup = layoutRefs.HeaderLayoutGroup;
+        closeButtonLayoutElement = layoutRefs.CloseButtonLayoutElement;
+        titleBlockLayoutElement = layoutRefs.TitleBlockLayoutElement;
+        heroCardLayoutElement = layoutRefs.HeroCardLayoutElement;
+        heroCardLayoutGroup = layoutRefs.HeroCardLayoutGroup;
+        scrollRootLayoutElement = layoutRefs.ScrollRootLayoutElement;
+        scrollViewport = layoutRefs.ScrollViewport;
+        scrollContentLayoutGroup = layoutRefs.ScrollContentLayoutGroup;
+        overviewCardLayoutElement = layoutRefs.OverviewCardLayoutElement;
+        overviewCardLayoutGroup = layoutRefs.OverviewCardLayoutGroup;
+        previewLayoutGroup = layoutRefs.PreviewLayoutGroup;
+        nextCardLayoutElement = layoutRefs.NextCardLayoutElement;
+        nextCardLayoutGroup = layoutRefs.NextCardLayoutGroup;
+        nextCardTitleText = layoutRefs.NextCardTitleText;
+        actionCardLayoutElement = layoutRefs.ActionCardLayoutElement;
+        actionCardLayoutGroup = layoutRefs.ActionCardLayoutGroup;
+        upgradeButtonLayoutElement = layoutRefs.UpgradeButtonLayoutElement;
 
-        VerticalLayoutGroup screenLayout = screenRoot.gameObject.AddComponent<VerticalLayoutGroup>();
-        screenLayout.padding = new RectOffset(0, 0, 0, 0);
-        screenLayout.spacing = 14f;
-        screenLayout.childAlignment = TextAnchor.UpperCenter;
-        screenLayout.childControlWidth = true;
-        screenLayout.childControlHeight = false;
-        screenLayout.childForceExpandWidth = true;
-        screenLayout.childForceExpandHeight = false;
+        previewStateImages.Clear();
+        previewStateLabels.Clear();
+        previewStateLevelTexts.Clear();
+        previewCardLayoutElements.Clear();
+        previewCardLayoutGroups.Clear();
 
-        RectTransform headerRow = CreateObject("HeaderRow", screenRoot);
-        HorizontalLayoutGroup headerLayout = headerRow.gameObject.AddComponent<HorizontalLayoutGroup>();
-        headerLayout.spacing = 12f;
-        headerLayout.childAlignment = TextAnchor.MiddleLeft;
-        headerLayout.childControlWidth = false;
-        headerLayout.childControlHeight = false;
-        headerLayout.childForceExpandWidth = false;
-        headerLayout.childForceExpandHeight = false;
+        foreach (RoomPanelPreviewRefs previewRefs in layoutRefs.PreviewStates)
+        {
+            previewStateImages[previewRefs.Level] = previewRefs.BackgroundImage;
+            previewStateLabels[previewRefs.Level] = previewRefs.LabelText;
+            previewStateLevelTexts[previewRefs.Level] = previewRefs.LevelText;
+            previewCardLayoutElements.Add(previewRefs.LayoutElement);
+            previewCardLayoutGroups.Add(previewRefs.LayoutGroup);
+        }
 
-        closeButton = CreateActionButton(headerRow, "CloseButton", "Back", ClosePanel);
-        LayoutElement closeLayout = closeButton.gameObject.AddComponent<LayoutElement>();
-        closeLayout.preferredWidth = 120f;
-        closeLayout.preferredHeight = 52f;
-
-        RectTransform titleBlock = CreateObject("TitleBlock", headerRow);
-        LayoutElement titleBlockLayout = titleBlock.gameObject.AddComponent<LayoutElement>();
-        titleBlockLayout.preferredWidth = 360f;
-        titleBlockLayout.flexibleWidth = 1f;
-
-        VerticalLayoutGroup titleLayout = titleBlock.gameObject.AddComponent<VerticalLayoutGroup>();
-        titleLayout.spacing = 4f;
-        titleLayout.childAlignment = TextAnchor.MiddleLeft;
-        titleLayout.childControlWidth = true;
-        titleLayout.childControlHeight = false;
-        titleLayout.childForceExpandWidth = true;
-        titleLayout.childForceExpandHeight = false;
-
-        titleText = CreateText(titleBlock, "TitleText", "Room", 42f, FontStyles.Bold, TextAlignmentOptions.Left);
-        coinsText = CreateText(titleBlock, "CoinsText", "Coins: --", 24f, FontStyles.Normal, TextAlignmentOptions.Left);
-        coinsText.color = new Color(1f, 0.86f, 0.4f, 1f);
-
-        statusText = CreateText(screenRoot, "StatusText", string.Empty, 22f, FontStyles.Normal, TextAlignmentOptions.Left);
-        statusText.color = new Color(0.98f, 0.82f, 0.52f, 1f);
-        statusText.gameObject.SetActive(false);
-
-        RectTransform heroCard = CreatePanel(screenRoot, "HeroCard", new Color(0.14f, 0.18f, 0.27f, 0.98f)).GetComponent<RectTransform>();
-        LayoutElement heroLayout = heroCard.gameObject.AddComponent<LayoutElement>();
-        heroLayout.preferredHeight = 120f;
-        VerticalLayoutGroup heroCardLayout = heroCard.gameObject.AddComponent<VerticalLayoutGroup>();
-        heroCardLayout.padding = new RectOffset(18, 18, 24, 16);
-        heroCardLayout.spacing = 6f;
-        heroCardLayout.childAlignment = TextAnchor.UpperLeft;
-        heroCardLayout.childControlWidth = true;
-        heroCardLayout.childControlHeight = false;
-        heroCardLayout.childForceExpandWidth = true;
-        heroCardLayout.childForceExpandHeight = false;
-
-        heroCardBackgroundImage = heroCard.GetComponent<Image>();
-        heroAccentImage = CreateAccentStrip(heroCard, "HeroAccentStrip", new Color(0.44f, 0.81f, 0.58f, 1f), 12f);
-        heroTitleText = CreateText(heroCard, "HeroTitleText", "Room Upgrade Hub", 30f, FontStyles.Bold, TextAlignmentOptions.Left);
-        heroMetaText = CreateText(heroCard, "HeroMetaText", "Level -- | Coins --", 20f, FontStyles.Bold, TextAlignmentOptions.Left);
-        heroMetaText.color = new Color(1f, 0.88f, 0.48f, 1f);
-        heroHintText = CreateText(heroCard, "HeroHintText", "Upgrade your room to improve the long-term comfort loop for your pet.", 19f, FontStyles.Normal, TextAlignmentOptions.Left);
-        heroHintText.textWrappingMode = TextWrappingModes.Normal;
-        heroHintText.color = new Color(0.86f, 0.91f, 0.97f, 0.95f);
-
-        RectTransform scrollRoot = CreatePanel(screenRoot, "ScrollRoot", new Color(0.08f, 0.11f, 0.17f, 0.92f)).GetComponent<RectTransform>();
-        LayoutElement scrollRootLayout = scrollRoot.gameObject.AddComponent<LayoutElement>();
-        scrollRootLayout.flexibleHeight = 1f;
-        scrollRootLayout.preferredHeight = 720f;
-
-        RectTransform viewport = CreatePanel(scrollRoot, "Viewport", new Color(0f, 0f, 0f, 0f)).GetComponent<RectTransform>();
-        viewport.anchorMin = Vector2.zero;
-        viewport.anchorMax = Vector2.one;
-        viewport.offsetMin = new Vector2(16f, 16f);
-        viewport.offsetMax = new Vector2(-16f, -16f);
-        viewport.gameObject.AddComponent<Mask>().showMaskGraphic = false;
-
-        RectTransform content = CreateObject("Content", viewport);
-        content.anchorMin = new Vector2(0f, 1f);
-        content.anchorMax = new Vector2(1f, 1f);
-        content.pivot = new Vector2(0.5f, 1f);
-        content.anchoredPosition = Vector2.zero;
-
-        VerticalLayoutGroup contentLayout = content.gameObject.AddComponent<VerticalLayoutGroup>();
-        contentLayout.padding = new RectOffset(0, 0, 0, 0);
-        contentLayout.spacing = 16f;
-        contentLayout.childAlignment = TextAnchor.UpperCenter;
-        contentLayout.childControlWidth = true;
-        contentLayout.childControlHeight = false;
-        contentLayout.childForceExpandWidth = true;
-        contentLayout.childForceExpandHeight = false;
-
-        ContentSizeFitter contentSize = content.gameObject.AddComponent<ContentSizeFitter>();
-        contentSize.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-        contentSize.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
-
-        ScrollRect scrollRect = scrollRoot.gameObject.AddComponent<ScrollRect>();
-        scrollRect.horizontal = false;
-        scrollRect.viewport = viewport;
-        scrollRect.content = content;
-
-        GameObject overviewCard = CreatePanel(content, "OverviewCard", new Color(0.16f, 0.21f, 0.31f, 0.98f));
-        LayoutElement overviewLayout = overviewCard.AddComponent<LayoutElement>();
-        overviewLayout.preferredHeight = 260f;
-        VerticalLayoutGroup overviewCardLayout = overviewCard.AddComponent<VerticalLayoutGroup>();
-        overviewCardLayout.padding = new RectOffset(18, 18, 18, 18);
-        overviewCardLayout.spacing = 12f;
-        overviewCardLayout.childAlignment = TextAnchor.UpperLeft;
-        overviewCardLayout.childControlWidth = true;
-        overviewCardLayout.childControlHeight = false;
-        overviewCardLayout.childForceExpandWidth = true;
-        overviewCardLayout.childForceExpandHeight = false;
-
-        levelText = CreateText(overviewCard.transform as RectTransform, "LevelText", "Room level -- / --", 30f, FontStyles.Bold, TextAlignmentOptions.Left);
-        currentVisualText = CreateText(overviewCard.transform as RectTransform, "CurrentVisualText", "Live visual: --", 24f, FontStyles.Normal, TextAlignmentOptions.Left);
-        currentVisualText.color = new Color(0.84f, 0.9f, 0.96f, 0.95f);
-
-        previewRow = CreateObject("PreviewRow", overviewCard.transform as RectTransform);
-        HorizontalLayoutGroup previewLayout = previewRow.gameObject.AddComponent<HorizontalLayoutGroup>();
-        previewLayout.spacing = 10f;
-        previewLayout.childAlignment = TextAnchor.MiddleCenter;
-        previewLayout.childControlWidth = true;
-        previewLayout.childControlHeight = false;
-        previewLayout.childForceExpandWidth = true;
-        previewLayout.childForceExpandHeight = false;
-
-        CreatePreviewState(previewRow, 0, "Starter");
-        CreatePreviewState(previewRow, 1, "Cozy");
-        CreatePreviewState(previewRow, 2, "Dream");
-
-        currentBonusText = CreateText(overviewCard.transform as RectTransform, "CurrentBonusText", string.Empty, 22f, FontStyles.Normal, TextAlignmentOptions.Left);
-        currentBonusText.textWrappingMode = TextWrappingModes.Normal;
-        currentBonusText.color = new Color(0.87f, 0.92f, 0.97f, 0.95f);
-
-        GameObject nextCard = CreatePanel(content, "NextUpgradeCard", new Color(0.14f, 0.18f, 0.28f, 0.98f));
-        LayoutElement nextLayout = nextCard.AddComponent<LayoutElement>();
-        nextLayout.preferredHeight = 230f;
-        VerticalLayoutGroup nextCardLayout = nextCard.AddComponent<VerticalLayoutGroup>();
-        nextCardLayout.padding = new RectOffset(18, 18, 18, 18);
-        nextCardLayout.spacing = 12f;
-        nextCardLayout.childAlignment = TextAnchor.UpperLeft;
-        nextCardLayout.childControlWidth = true;
-        nextCardLayout.childControlHeight = false;
-        nextCardLayout.childForceExpandWidth = true;
-        nextCardLayout.childForceExpandHeight = false;
-
-        CreateText(nextCard.transform as RectTransform, "NextTitleText", "Next upgrade", 28f, FontStyles.Bold, TextAlignmentOptions.Left);
-        nextUpgradeText = CreateText(nextCard.transform as RectTransform, "NextUpgradeText", string.Empty, 22f, FontStyles.Normal, TextAlignmentOptions.Left);
-        nextUpgradeText.textWrappingMode = TextWrappingModes.Normal;
-        nextUpgradeText.color = new Color(0.86f, 0.91f, 0.97f, 0.95f);
-
-        GameObject actionCard = CreatePanel(content, "ActionCard", new Color(0.16f, 0.2f, 0.18f, 0.98f));
-        LayoutElement actionLayout = actionCard.AddComponent<LayoutElement>();
-        actionLayout.preferredHeight = 154f;
-        VerticalLayoutGroup actionCardLayout = actionCard.AddComponent<VerticalLayoutGroup>();
-        actionCardLayout.padding = new RectOffset(18, 18, 18, 18);
-        actionCardLayout.spacing = 12f;
-        actionCardLayout.childAlignment = TextAnchor.UpperCenter;
-        actionCardLayout.childControlWidth = true;
-        actionCardLayout.childControlHeight = false;
-        actionCardLayout.childForceExpandWidth = true;
-        actionCardLayout.childForceExpandHeight = false;
-
-        upgradeButton = CreateActionButton(actionCard.transform as RectTransform, "UpgradeButton", "Upgrade", OnUpgradePressed);
-        LayoutElement upgradeLayout = upgradeButton.gameObject.AddComponent<LayoutElement>();
-        upgradeLayout.preferredHeight = 58f;
-        upgradeLayout.preferredWidth = 0f;
-
-        footerNoteText = CreateText(actionCard.transform as RectTransform, "FooterNoteText", "Customization coming later.", 20f, FontStyles.Italic, TextAlignmentOptions.Center);
-        footerNoteText.color = new Color(0.8f, 0.87f, 0.94f, 0.88f);
-
-        upgradeButtonLabel = upgradeButton.GetComponentInChildren<TextMeshProUGUI>(true);
+        ApplyResponsiveLayout();
     }
 
     private void ApplyScreenVisuals()
     {
-        if (panelRoot == null)
-        {
-            return;
-        }
-
-        Image background = panelRoot.GetComponent<Image>();
-        if (background != null)
-        {
-            background.color = new Color(0.05f, 0.08f, 0.14f, 0.96f);
-        }
+        RoomPanelViewUtility.ApplyPanelBackground(panelRoot, new Color(0.05f, 0.08f, 0.14f, 0.96f));
     }
 
     private void EnsurePanelLayering()
     {
-        if (panelRoot != null)
+        RoomPanelViewUtility.EnsurePanelLayering(transform, panelRoot);
+    }
+
+    private void ApplyResponsiveLayout()
+    {
+        RoomPanelResponsiveProfile profile = RoomPanelViewUtility.BuildResponsiveProfile(
+            RoomPanelViewUtility.GetReferenceCanvasHeight(transform as RectTransform, screenRoot));
+
+        if (screenRoot != null)
         {
-            Transform shellRuntimeRoot = transform.Find("ShellRuntimeRoot");
-            if (shellRuntimeRoot != null)
+            screenRoot.offsetMin = new Vector2(profile.ScreenInset, profile.ScreenInset);
+            screenRoot.offsetMax = new Vector2(-profile.ScreenInset, -profile.ScreenInset);
+        }
+
+        if (screenLayoutGroup != null)
+        {
+            screenLayoutGroup.spacing = profile.ScreenSpacing;
+        }
+
+        if (headerLayoutGroup != null)
+        {
+            headerLayoutGroup.spacing = profile.HeaderSpacing;
+        }
+
+        if (closeButtonLayoutElement != null)
+        {
+            closeButtonLayoutElement.preferredWidth = profile.CloseWidth;
+            closeButtonLayoutElement.preferredHeight = profile.CloseHeight;
+        }
+
+        if (titleBlockLayoutElement != null)
+        {
+            titleBlockLayoutElement.preferredWidth = profile.TitleWidth;
+        }
+
+        if (heroCardLayoutElement != null)
+        {
+            heroCardLayoutElement.preferredHeight = profile.HeroHeight;
+        }
+
+        RoomPanelViewUtility.ApplyLayoutPadding(heroCardLayoutGroup, profile.HeroSidePadding, profile.HeroSidePadding, profile.HeroTopPadding, profile.HeroBottomPadding);
+        if (heroCardLayoutGroup != null)
+        {
+            heroCardLayoutGroup.spacing = profile.HeroSpacing;
+        }
+
+        if (scrollRootLayoutElement != null)
+        {
+            scrollRootLayoutElement.preferredHeight = profile.ScrollHeight;
+        }
+
+        if (scrollViewport != null)
+        {
+            scrollViewport.offsetMin = new Vector2(profile.ViewportInset, profile.ViewportInset);
+            scrollViewport.offsetMax = new Vector2(-profile.ViewportInset, -profile.ViewportInset);
+        }
+
+        if (scrollContentLayoutGroup != null)
+        {
+            scrollContentLayoutGroup.spacing = profile.ContentSpacing;
+        }
+
+        if (overviewCardLayoutElement != null)
+        {
+            overviewCardLayoutElement.preferredHeight = profile.OverviewHeight;
+        }
+
+        RoomPanelViewUtility.ApplyLayoutPadding(overviewCardLayoutGroup, profile.CardPadding, profile.CardPadding, profile.CardPadding, profile.CardPadding);
+        if (overviewCardLayoutGroup != null)
+        {
+            overviewCardLayoutGroup.spacing = profile.CardSpacing;
+        }
+
+        if (previewLayoutGroup != null)
+        {
+            previewLayoutGroup.spacing = profile.PreviewSpacing;
+        }
+
+        foreach (LayoutElement previewLayout in previewCardLayoutElements)
+        {
+            if (previewLayout != null)
             {
-                panelRoot.transform.SetSiblingIndex(shellRuntimeRoot.GetSiblingIndex());
+                previewLayout.preferredHeight = profile.PreviewCardHeight;
+            }
+        }
+
+        foreach (VerticalLayoutGroup previewCardLayout in previewCardLayoutGroups)
+        {
+            RoomPanelViewUtility.ApplyLayoutPadding(previewCardLayout, profile.PreviewPadding, profile.PreviewPadding, profile.PreviewPadding, profile.PreviewPadding);
+        }
+
+        if (nextCardLayoutElement != null)
+        {
+            nextCardLayoutElement.preferredHeight = profile.NextHeight;
+        }
+
+        RoomPanelViewUtility.ApplyLayoutPadding(nextCardLayoutGroup, profile.CardPadding, profile.CardPadding, profile.CardPadding, profile.CardPadding);
+        if (nextCardLayoutGroup != null)
+        {
+            nextCardLayoutGroup.spacing = profile.CardSpacing;
+        }
+
+        if (actionCardLayoutElement != null)
+        {
+            actionCardLayoutElement.preferredHeight = profile.ActionHeight;
+        }
+
+        RoomPanelViewUtility.ApplyLayoutPadding(actionCardLayoutGroup, profile.CardPadding, profile.CardPadding, profile.CardPadding, profile.CardPadding);
+        if (actionCardLayoutGroup != null)
+        {
+            actionCardLayoutGroup.spacing = profile.CardSpacing;
+        }
+
+        if (upgradeButtonLayoutElement != null)
+        {
+            upgradeButtonLayoutElement.preferredHeight = profile.UpgradeHeight;
+        }
+
+        if (titleText != null)
+        {
+            titleText.fontSize = profile.TitleFontSize;
+        }
+
+        if (coinsText != null)
+        {
+            coinsText.fontSize = profile.CoinsFontSize;
+        }
+
+        if (statusText != null)
+        {
+            statusText.fontSize = profile.StatusFontSize;
+        }
+
+        if (heroTitleText != null)
+        {
+            heroTitleText.fontSize = profile.HeroTitleFontSize;
+        }
+
+        if (heroMetaText != null)
+        {
+            heroMetaText.fontSize = profile.HeroMetaFontSize;
+        }
+
+        if (heroHintText != null)
+        {
+            heroHintText.fontSize = profile.HeroHintFontSize;
+        }
+
+        if (levelText != null)
+        {
+            levelText.fontSize = profile.LevelFontSize;
+        }
+
+        if (currentVisualText != null)
+        {
+            currentVisualText.fontSize = profile.CurrentVisualFontSize;
+        }
+
+        if (currentBonusText != null)
+        {
+            currentBonusText.fontSize = profile.BodyFontSize;
+        }
+
+        if (nextCardTitleText != null)
+        {
+            nextCardTitleText.fontSize = profile.NextTitleFontSize;
+        }
+
+        if (nextUpgradeText != null)
+        {
+            nextUpgradeText.fontSize = profile.BodyFontSize;
+        }
+
+        if (footerNoteText != null)
+        {
+            footerNoteText.fontSize = profile.FooterFontSize;
+        }
+
+        if (upgradeButtonLabel != null)
+        {
+            upgradeButtonLabel.fontSize = profile.UpgradeLabelFontSize;
+        }
+
+        foreach (KeyValuePair<int, TextMeshProUGUI> pair in previewStateLevelTexts)
+        {
+            if (pair.Value != null)
+            {
+                pair.Value.fontSize = profile.PreviewLevelFontSize;
+            }
+        }
+
+        foreach (KeyValuePair<int, TextMeshProUGUI> pair in previewStateLabels)
+        {
+            if (pair.Value != null)
+            {
+                pair.Value.fontSize = profile.PreviewLabelFontSize;
             }
         }
     }
 
-    private void CreatePreviewState(RectTransform parent, int level, string label)
-    {
-        GameObject stateCard = CreatePanel(parent, $"PreviewState_{level}", new Color(0.17f, 0.21f, 0.29f, 0.95f));
-        LayoutElement stateLayout = stateCard.AddComponent<LayoutElement>();
-        stateLayout.preferredWidth = 0f;
-        stateLayout.preferredHeight = 78f;
-        stateLayout.flexibleWidth = 1f;
-
-        VerticalLayoutGroup cardLayout = stateCard.AddComponent<VerticalLayoutGroup>();
-        cardLayout.padding = new RectOffset(10, 10, 10, 10);
-        cardLayout.spacing = 4f;
-        cardLayout.childAlignment = TextAnchor.MiddleCenter;
-        cardLayout.childControlWidth = true;
-        cardLayout.childControlHeight = false;
-        cardLayout.childForceExpandWidth = true;
-        cardLayout.childForceExpandHeight = false;
-
-        CreateText(stateCard.transform as RectTransform, "BadgeLevel", $"Lv {level}", 18f, FontStyles.Bold, TextAlignmentOptions.Center);
-        TextMeshProUGUI labelText = CreateText(stateCard.transform as RectTransform, "BadgeLabel", label, 20f, FontStyles.Normal, TextAlignmentOptions.Center);
-        labelText.color = new Color(0.84f, 0.89f, 0.95f, 0.94f);
-
-        previewStateImages[level] = stateCard.GetComponent<Image>();
-        previewStateLabels[level] = labelText;
-    }
-
-    private Image CreateAccentStrip(RectTransform parent, string name, Color color, float height)
-    {
-        GameObject strip = CreatePanel(parent, name, color);
-        RectTransform stripRect = strip.GetComponent<RectTransform>();
-        stripRect.anchorMin = new Vector2(0f, 1f);
-        stripRect.anchorMax = new Vector2(1f, 1f);
-        stripRect.pivot = new Vector2(0.5f, 1f);
-        stripRect.offsetMin = new Vector2(0f, -height);
-        stripRect.offsetMax = Vector2.zero;
-        return strip.GetComponent<Image>();
-    }
-
-    private GameObject CreatePanel(RectTransform parent, string name, Color color)
-    {
-        GameObject panel = new GameObject(name, typeof(RectTransform));
-        RectTransform rect = panel.GetComponent<RectTransform>();
-        rect.SetParent(parent, false);
-        rect.localScale = Vector3.one;
-        Image image = panel.AddComponent<Image>();
-        image.color = color;
-        return panel;
-    }
-
-    private RectTransform CreateObject(string name, RectTransform parent)
-    {
-        GameObject obj = new GameObject(name, typeof(RectTransform));
-        RectTransform rect = obj.GetComponent<RectTransform>();
-        rect.SetParent(parent, false);
-        rect.localScale = Vector3.one;
-        return rect;
-    }
-
-    private TextMeshProUGUI CreateText(RectTransform parent, string name, string value, float fontSize, FontStyles fontStyle, TextAlignmentOptions alignment)
-    {
-        RectTransform rect = CreateObject(name, parent);
-        TextMeshProUGUI text = rect.gameObject.AddComponent<TextMeshProUGUI>();
-        text.text = value;
-        text.fontSize = fontSize;
-        text.fontStyle = fontStyle;
-        text.alignment = alignment;
-        text.color = new Color(0.94f, 0.97f, 1f, 1f);
-        text.textWrappingMode = TextWrappingModes.NoWrap;
-        return text;
-    }
-
-    private Button CreateActionButton(RectTransform parent, string name, string label, UnityEngine.Events.UnityAction onClick)
-    {
-        GameObject buttonObject = CreatePanel(parent, name, new Color(0.23f, 0.58f, 0.35f, 1f));
-        Button button = buttonObject.AddComponent<Button>();
-        button.onClick.AddListener(onClick);
-
-        RectTransform textRect = CreateObject("Label", buttonObject.transform as RectTransform);
-        textRect.anchorMin = Vector2.zero;
-        textRect.anchorMax = Vector2.one;
-        textRect.offsetMin = Vector2.zero;
-        textRect.offsetMax = Vector2.zero;
-
-        TextMeshProUGUI buttonText = textRect.gameObject.AddComponent<TextMeshProUGUI>();
-        buttonText.text = label;
-        buttonText.alignment = TextAlignmentOptions.Center;
-        buttonText.fontSize = 24f;
-        buttonText.fontStyle = FontStyles.Bold;
-        buttonText.color = Color.white;
-        buttonText.textWrappingMode = TextWrappingModes.Normal;
-        return button;
-    }
 }

@@ -6,6 +6,50 @@ using UnityEngine.UI;
 public class RoomPanelTests
 {
     [Test]
+    public void ShowPanel_UsesCompactLayoutOnShortCanvas()
+    {
+        GameObject canvasObject = new GameObject("Canvas", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
+        try
+        {
+            RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
+            canvasRect.sizeDelta = new Vector2(720f, 720f);
+
+            RoomPanelUI roomPanel = canvasObject.AddComponent<RoomPanelUI>();
+            roomPanel.ShowPanel();
+            Canvas.ForceUpdateCanvases();
+
+            Transform screenRoot = roomPanel.panelRoot.transform.Find("RoomScreenRoot");
+            Assert.NotNull(screenRoot);
+
+            VerticalLayoutGroup screenLayout = screenRoot.GetComponent<VerticalLayoutGroup>();
+            Assert.NotNull(screenLayout);
+            Assert.AreEqual(10f, screenLayout.spacing, 0.01f);
+
+            LayoutElement heroLayout = screenRoot.Find("HeroCard").GetComponent<LayoutElement>();
+            Assert.AreEqual(102f, heroLayout.preferredHeight, 0.01f);
+
+            Transform scrollRoot = screenRoot.Find("ScrollRoot");
+            Assert.NotNull(scrollRoot);
+            Assert.NotNull(scrollRoot.GetComponent<ScrollRect>());
+
+            RectTransform viewport = scrollRoot.Find("Viewport") as RectTransform;
+            Assert.NotNull(viewport);
+            Assert.AreEqual(new Vector2(10f, 10f), viewport.offsetMin);
+            Assert.AreEqual(new Vector2(-10f, -10f), viewport.offsetMax);
+
+            LayoutElement actionLayout = scrollRoot.Find("Viewport/Content/ActionCard").GetComponent<LayoutElement>();
+            Assert.AreEqual(132f, actionLayout.preferredHeight, 0.01f);
+
+            LayoutElement upgradeLayout = scrollRoot.Find("Viewport/Content/ActionCard/UpgradeButton").GetComponent<LayoutElement>();
+            Assert.AreEqual(50f, upgradeLayout.preferredHeight, 0.01f);
+        }
+        finally
+        {
+            Object.DestroyImmediate(canvasObject);
+        }
+    }
+
+    [Test]
     public void OpenRoom_UsesSeparatePanelAndReturnsHomeCleanly()
     {
         GameObject canvasObject = new GameObject("Canvas", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
@@ -14,7 +58,7 @@ public class RoomPanelTests
             AppShellUI shell = canvasObject.AddComponent<AppShellUI>();
             RoomPanelUI roomPanel = canvasObject.AddComponent<RoomPanelUI>();
 
-            shell.SetDependencies(null, null, null, null, roomPanel, null, null);
+            shell.SetDependencies(null, null, null, null, roomPanel, null, null, null);
 
             bool opened = shell.OpenRoom();
             bool closed = shell.OpenHome();
@@ -52,18 +96,17 @@ public class RoomPanelTests
             RoomPanelStateData levelZero = manager.GetRoomPanelState();
             Assert.AreEqual(0, levelZero.currentLevel);
             Assert.AreEqual(25, levelZero.currentUpgradeCost);
-            Assert.AreEqual(2, levelZero.currentUnlockLevel);
-            Assert.AreEqual("Unlock at level 2", levelZero.blockedReason);
+            Assert.AreEqual(0, levelZero.currentUnlockLevel);
+            Assert.AreEqual("Need 25 coins", levelZero.blockedReason);
             Assert.False(levelZero.isMaxLevel);
 
-            manager.progressionData.level = 4;
             manager.currencyData.coins = 50;
             manager.roomData.roomLevel = 1;
 
             RoomPanelStateData levelOne = manager.GetRoomPanelState();
             Assert.AreEqual(1, levelOne.currentLevel);
             Assert.AreEqual(50, levelOne.currentUpgradeCost);
-            Assert.AreEqual(4, levelOne.currentUnlockLevel);
+            Assert.AreEqual(0, levelOne.currentUnlockLevel);
             Assert.True(levelOne.canUpgradeNow);
             Assert.AreEqual("Dream Room", levelOne.nextVisualStateLabel);
 
@@ -82,7 +125,7 @@ public class RoomPanelTests
     }
 
     [Test]
-    public void GetRoomPanelState_ReportsBlockedReasonsForDeadPetAndLowCoins()
+    public void GetRoomPanelState_ReportsBlockedReasonsForLowCoinsWithoutDeathGate()
     {
         BalanceConfig balanceConfig = ScriptableObject.CreateInstance<BalanceConfig>();
         balanceConfig.roomUpgrade1Cost = 25;
@@ -93,19 +136,55 @@ public class RoomPanelTests
         {
             GameManager manager = managerObject.AddComponent<GameManager>();
             manager.balanceConfig = balanceConfig;
-            manager.petData = new PetData { isDead = true, hasIndependentStats = true };
+            manager.petData = new PetData { hunger = 0f, mood = 0f, hasIndependentStats = true };
             manager.currencyData = new CurrencyData { coins = 100 };
             manager.progressionData = new ProgressionData { level = 5, xp = 0 };
             manager.roomData = new RoomData { roomLevel = 0 };
 
-            RoomPanelStateData deadState = manager.GetRoomPanelState();
-            Assert.AreEqual("Pet is dead", deadState.blockedReason);
+            RoomPanelStateData neglectedState = manager.GetRoomPanelState();
+            Assert.True(neglectedState.canUpgradeNow);
 
-            manager.petData.isDead = false;
             manager.currencyData.coins = 5;
 
             RoomPanelStateData lowCoinsState = manager.GetRoomPanelState();
             Assert.AreEqual("Need 25 coins", lowCoinsState.blockedReason);
+        }
+        finally
+        {
+            Object.DestroyImmediate(managerObject);
+            Object.DestroyImmediate(balanceConfig);
+        }
+    }
+
+    [Test]
+    public void GetRoomPanelState_IgnoresLegacyProgressionUnlockLevels()
+    {
+        BalanceConfig balanceConfig = ScriptableObject.CreateInstance<BalanceConfig>();
+        balanceConfig.roomUpgrade1Cost = 25;
+        balanceConfig.roomUpgrade2Cost = 50;
+        balanceConfig.roomUpgrade1UnlockLevel = 2;
+        balanceConfig.roomUpgrade2UnlockLevel = 4;
+
+        GameObject managerObject = new GameObject("GameManager");
+        try
+        {
+            GameManager manager = managerObject.AddComponent<GameManager>();
+            manager.balanceConfig = balanceConfig;
+            manager.petData = new PetData { hunger = 50f, mood = 50f, hasIndependentStats = true };
+            manager.currencyData = new CurrencyData { coins = 999 };
+            manager.progressionData = new ProgressionData { level = 1, xp = 0 };
+            manager.roomData = new RoomData { roomLevel = 0 };
+
+            RoomPanelStateData levelZero = manager.GetRoomPanelState();
+            Assert.True(levelZero.canUpgradeNow);
+            Assert.AreEqual(string.Empty, levelZero.blockedReason);
+
+            manager.progressionData.level = 3;
+            manager.roomData.roomLevel = 1;
+
+            RoomPanelStateData levelOne = manager.GetRoomPanelState();
+            Assert.True(levelOne.canUpgradeNow);
+            Assert.AreEqual(string.Empty, levelOne.blockedReason);
         }
         finally
         {
@@ -132,7 +211,7 @@ public class RoomPanelTests
         CurrencySystem currencySystem = new CurrencySystem(currencyData);
         InventorySystem inventorySystem = new InventorySystem(inventoryData);
         ShopSystem shopSystem = new ShopSystem(currencySystem, inventorySystem);
-        ProgressionSystem progressionSystem = new ProgressionSystem(progressionData, balanceConfig.xpToNextLevel, balanceConfig.buyUnlockLevel);
+        ProgressionSystem progressionSystem = new ProgressionSystem(progressionData, balanceConfig.xpToNextLevel, 0);
         MissionSystem missionSystem = new MissionSystem();
         missionSystem.Init(new MissionData());
 

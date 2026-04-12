@@ -468,10 +468,10 @@ public class MissionRowUI : MonoBehaviour
 
     private string BuildRewardLabel(MissionEntryData mission)
     {
-        string label = $"+{mission.rewardCoins} Coins  +{mission.rewardXp} XP";
-        if (mission.rewardSkillPercent > 0f)
+        string label = $"+{mission.rewardCoins} Coins";
+        if (mission.rewardSkillSP > 0)
         {
-            label += $"  +{mission.rewardSkillPercent:0.#}% Skill";
+            label += $"  +{mission.rewardSkillSP} SP";
         }
 
         if (mission.rewardMood > 0)
@@ -481,7 +481,7 @@ public class MissionRowUI : MonoBehaviour
 
         if (mission.rewardEnergy > 0)
         {
-            label += $"  +{mission.rewardEnergy} Energy";
+            label += $"  +{mission.rewardEnergy} Care";
         }
 
         return label;

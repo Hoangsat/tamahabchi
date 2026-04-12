@@ -1,56 +1,43 @@
+using UnityEngine;
+
 public class ProgressionSystem
 {
-    private ProgressionData progressionData;
-    private int xpToNextLevel;
-    private int buyUnlockLevel;
+    private readonly ProgressionData progressionData;
 
     public ProgressionSystem(ProgressionData progressionData, int xpToNextLevel, int buyUnlockLevel)
     {
         this.progressionData = progressionData;
-        this.xpToNextLevel = xpToNextLevel;
-        this.buyUnlockLevel = buyUnlockLevel;
+        // Guard only — do NOT overwrite data that was loaded from save
+        NormalizeState();
     }
 
     public int GetLevel()
     {
-        return progressionData.level;
+        if (progressionData == null) return 1;
+        return Mathf.Max(1, progressionData.level);
     }
 
     public int GetXp()
     {
-        return progressionData.xp;
-    }
-
-    public void AddXp(int amount)
-    {
-        if (amount <= 0) return;
-
-        progressionData.xp += amount;
-
-        while (progressionData.xp >= GetXpRequiredForNextLevel())
-        {
-            progressionData.xp -= GetXpRequiredForNextLevel();
-            progressionData.level++;
-        }
-    }
-
-    public int GetXpRequiredForNextLevel()
-    {
-        return xpToNextLevel; // Preserved original flat 10 XP per level logic
-    }
-
-    public int GetWorkReward(int baseReward)
-    {
-        return baseReward + (progressionData.level - 1);
+        if (progressionData == null) return 0;
+        return Mathf.Max(0, progressionData.xp);
     }
 
     public int GetFocusReward(int baseReward)
     {
-        return baseReward + (progressionData.level - 1) * 2;
+        return baseReward;
     }
 
     public bool IsBuyUnlocked()
     {
-        return progressionData.level >= buyUnlockLevel;
+        return true;
+    }
+
+    private void NormalizeState()
+    {
+        if (progressionData == null) return;
+        // Only enforce floor values — never forcibly reset to 1/0.
+        progressionData.level = Mathf.Max(1, progressionData.level);
+        progressionData.xp = Mathf.Max(0, progressionData.xp);
     }
 }

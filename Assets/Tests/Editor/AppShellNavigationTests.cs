@@ -17,7 +17,7 @@ public class AppShellNavigationTests
             skillsPanel.panelRoot = new GameObject("SkillsPanelRoot");
             skillsPanel.panelRoot.SetActive(false);
 
-            shell.SetDependencies(null, skillsPanel, null, null, null, null, null);
+            shell.SetDependencies(null, skillsPanel, null, null, null, null, null, null);
 
             Assert.True(shell.OpenSkills());
             Assert.True(skillsPanel.IsPanelVisible());
@@ -63,6 +63,29 @@ public class AppShellNavigationTests
     }
 
     [Test]
+    public void OpenBattle_ShowsBattlePanel_AndHomeReturns()
+    {
+        GameObject canvasObject = new GameObject("Canvas", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
+        try
+        {
+            AppShellUI shell = canvasObject.AddComponent<AppShellUI>();
+            BattlePanelUI battlePanel = canvasObject.AddComponent<BattlePanelUI>();
+
+            shell.SetDependencies(null, null, null, null, null, battlePanel, null, null);
+
+            Assert.True(shell.OpenBattle());
+            Assert.True(battlePanel.IsPanelVisible());
+
+            Assert.True(shell.OpenHome());
+            Assert.False(battlePanel.IsPanelVisible());
+        }
+        finally
+        {
+            Object.DestroyImmediate(canvasObject);
+        }
+    }
+
+    [Test]
     public void OpenHomeDetails_HidesShellHintToKeepNavVisible()
     {
         GameObject canvasObject = new GameObject("Canvas", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
@@ -76,7 +99,7 @@ public class AppShellNavigationTests
             Assert.NotNull(buildShellMethod);
             buildShellMethod.Invoke(shell, null);
 
-            shell.SetDependencies(null, null, null, null, null, null, homeDetails);
+            shell.SetDependencies(null, null, null, null, null, null, null, homeDetails);
             Assert.True(shell.OpenHome());
 
             var shellHint = shellHintField.GetValue(shell) as TMPro.TextMeshProUGUI;

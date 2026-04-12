@@ -26,7 +26,6 @@ public class ShopCatalogItemData
     public string iconLabel = string.Empty;
     public int price;
     public int effectValue;
-    public int unlockLevel;
     public bool purchaseEnabled = true;
     public string unavailableReason = string.Empty;
     public ShopCategory category = ShopCategory.Food;
@@ -55,8 +54,6 @@ public static class ShopCatalogDefinitions
 {
     public static ShopCatalogItemData[] Create(BalanceConfig balanceConfig)
     {
-        int buyUnlockLevel = balanceConfig != null ? balanceConfig.buyUnlockLevel : 2;
-
         return new[]
         {
             new ShopCatalogItemData
@@ -67,7 +64,6 @@ public static class ShopCatalogDefinitions
                 iconLabel = "BASIC",
                 price = balanceConfig != null ? balanceConfig.foodPrice : 10,
                 effectValue = Mathf.RoundToInt(balanceConfig != null ? balanceConfig.feedAmount : 10f),
-                unlockLevel = buyUnlockLevel,
                 category = ShopCategory.Food,
                 kind = ShopItemKind.Consumable
             },
@@ -79,7 +75,6 @@ public static class ShopCatalogDefinitions
                 iconLabel = "SNACK",
                 price = balanceConfig != null ? balanceConfig.snackPrice : 5,
                 effectValue = Mathf.RoundToInt(balanceConfig != null ? balanceConfig.snackRestore : 15f),
-                unlockLevel = buyUnlockLevel,
                 category = ShopCategory.Food,
                 kind = ShopItemKind.Consumable
             },
@@ -91,7 +86,6 @@ public static class ShopCatalogDefinitions
                 iconLabel = "MEAL",
                 price = balanceConfig != null ? balanceConfig.mealPrice : 20,
                 effectValue = Mathf.RoundToInt(balanceConfig != null ? balanceConfig.mealRestore : 40f),
-                unlockLevel = buyUnlockLevel,
                 category = ShopCategory.Food,
                 kind = ShopItemKind.Consumable
             },
@@ -103,31 +97,39 @@ public static class ShopCatalogDefinitions
                 iconLabel = "PREM",
                 price = balanceConfig != null ? balanceConfig.premiumPrice : 50,
                 effectValue = Mathf.RoundToInt(balanceConfig != null ? balanceConfig.premiumRestore : 80f),
-                unlockLevel = buyUnlockLevel,
                 category = ShopCategory.Food,
                 kind = ShopItemKind.Consumable
             },
             new ShopCatalogItemData
             {
                 id = "energy_drink",
-                displayName = "Energy Drink",
-                description = "Restore 30 energy.",
+                displayName = "Care Drink",
+                description = "Restore hunger and mood together.",
                 iconLabel = "NRGY",
                 price = 40,
                 effectValue = 30,
-                unlockLevel = buyUnlockLevel,
+                category = ShopCategory.Energy,
+                kind = ShopItemKind.Consumable
+            },
+            new ShopCatalogItemData
+            {
+                id = "care_treat",
+                displayName = "Care Treat",
+                description = "Restore a small amount of hunger and mood together.",
+                iconLabel = "TREAT",
+                price = 20,
+                effectValue = 18,
                 category = ShopCategory.Energy,
                 kind = ShopItemKind.Consumable
             },
             new ShopCatalogItemData
             {
                 id = "energy_boost",
-                displayName = "Energy Boost",
-                description = "Restore 50 energy.",
+                displayName = "Care Boost",
+                description = "Restore a bigger amount of hunger and mood together.",
                 iconLabel = "BOOST",
                 price = 65,
                 effectValue = 50,
-                unlockLevel = buyUnlockLevel,
                 category = ShopCategory.Energy,
                 kind = ShopItemKind.Consumable
             },
@@ -139,7 +141,6 @@ public static class ShopCatalogDefinitions
                 iconLabel = "TOY",
                 price = 30,
                 effectValue = 25,
-                unlockLevel = buyUnlockLevel,
                 category = ShopCategory.Mood,
                 kind = ShopItemKind.Consumable
             },
@@ -151,7 +152,6 @@ public static class ShopCatalogDefinitions
                 iconLabel = "MUSIC",
                 price = 45,
                 effectValue = 35,
-                unlockLevel = buyUnlockLevel,
                 category = ShopCategory.Mood,
                 kind = ShopItemKind.Consumable
             },
@@ -162,7 +162,6 @@ public static class ShopCatalogDefinitions
                 description = "Unlock a cool midnight style for your pet.",
                 iconLabel = "NIGHT",
                 price = 120,
-                unlockLevel = buyUnlockLevel,
                 category = ShopCategory.Skins,
                 kind = ShopItemKind.Cosmetic
             },
@@ -173,18 +172,16 @@ public static class ShopCatalogDefinitions
                 description = "Unlock a bright sunrise style for your pet.",
                 iconLabel = "SUN",
                 price = 150,
-                unlockLevel = buyUnlockLevel,
                 category = ShopCategory.Skins,
                 kind = ShopItemKind.Cosmetic
             },
             new ShopCatalogItemData
             {
-                id = "special_revive_token",
-                displayName = "Revive Token",
-                description = "Inventory-based revive is planned for a later build.",
-                iconLabel = "REVIVE",
+                id = "special_care_kit",
+                displayName = "Care Kit",
+                description = "Expanded care systems are planned for a later build.",
+                iconLabel = "CARE",
                 price = 50,
-                unlockLevel = buyUnlockLevel,
                 purchaseEnabled = false,
                 unavailableReason = "Coming soon",
                 category = ShopCategory.Special,
@@ -197,7 +194,6 @@ public static class ShopCatalogDefinitions
                 description = "Extra skill slots are planned for a later build.",
                 iconLabel = "SLOT",
                 price = 90,
-                unlockLevel = buyUnlockLevel,
                 purchaseEnabled = false,
                 unavailableReason = "Coming soon",
                 category = ShopCategory.Special,

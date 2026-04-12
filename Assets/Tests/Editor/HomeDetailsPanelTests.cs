@@ -13,7 +13,7 @@ public class HomeDetailsPanelTests
             AppShellUI shell = canvasObject.AddComponent<AppShellUI>();
             HomeDetailsPanelUI homeDetails = canvasObject.AddComponent<HomeDetailsPanelUI>();
 
-            shell.SetDependencies(null, null, null, null, null, null, homeDetails);
+            shell.SetDependencies(null, null, null, null, null, null, null, homeDetails);
 
             Assert.True(shell.OpenHome());
             Assert.True(homeDetails.IsPanelVisible());
@@ -69,7 +69,7 @@ public class HomeDetailsPanelTests
             skillsPanel.panelRoot = new GameObject("SkillsPanelRoot");
             skillsPanel.panelRoot.SetActive(false);
 
-            shell.SetDependencies(null, skillsPanel, null, null, null, null, homeDetails);
+            shell.SetDependencies(null, skillsPanel, null, null, null, null, null, homeDetails);
             Assert.True(shell.OpenHome());
             Assert.True(homeDetails.IsPanelVisible());
 

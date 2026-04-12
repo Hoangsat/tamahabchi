@@ -6,6 +6,9 @@ public class SkillEntry
     public string id = "";
     public string name = "";
     public string icon = "";
+    public string archetypeId = "";
+    public int totalSP = 0;
+    public int decayDebtSP = 0;
     public float percent = 0f;
     public bool isGolden = false;
     public float bonusExpMultiplier = 0f;

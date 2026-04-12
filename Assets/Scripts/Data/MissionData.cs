@@ -24,9 +24,9 @@ public class MissionEntryData
     public float requiredMinutes;
     public float progressMinutes;
     public int rewardCoins;
-    public int rewardXp;
     public int rewardMood;
     public int rewardEnergy;
+    public int rewardSkillSP;
     public float rewardSkillPercent;
     public string rewardSkillId;
     public bool isRoutine;

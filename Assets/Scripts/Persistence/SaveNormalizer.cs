@@ -4,7 +4,7 @@ using UnityEngine;
 
 public static class SaveNormalizer
 {
-    public const int CurrentSaveVersion = 3;
+    public const int CurrentSaveVersion = 7;
 
     public static SaveData CreateDefault()
     {
@@ -30,6 +30,7 @@ public static class SaveNormalizer
         normalized.dailyRewardData ??= new DailyRewardData();
         normalized.onboardingData ??= new OnboardingData();
         normalized.focusStateData ??= new FocusStateData();
+        normalized.idleData ??= new IdleData();
 
         NormalizePet(normalized.petData);
         NormalizeCurrency(normalized.currencyData);
@@ -40,6 +41,7 @@ public static class SaveNormalizer
         NormalizeMissions(normalized.missionData);
         NormalizeDailyReward(normalized.dailyRewardData);
         NormalizeFocusState(normalized.focusStateData);
+        NormalizeIdle(normalized.idleData);
         normalized.lastSeenUtc = NormalizeUtcTimestamp(normalized.lastSeenUtc);
         normalized.lastResetBucket = NormalizeResetBucket(normalized.lastResetBucket, normalized.missionData);
         normalized.saveVersion = CurrentSaveVersion;
@@ -51,15 +53,10 @@ public static class SaveNormalizer
         petData.hunger = Mathf.Clamp(petData.hunger, 0f, 100f);
         petData.mood = Mathf.Clamp(petData.mood, 0f, 100f);
         petData.energy = Mathf.Clamp(petData.energy, 0f, 100f);
+        petData.neglectDecayCarrySeconds = Mathf.Max(0f, petData.neglectDecayCarrySeconds);
         petData.statusText = string.IsNullOrWhiteSpace(petData.statusText) ? "Happy" : petData.statusText.Trim();
-
-        if (petData.hunger <= 0f)
-        {
-            petData.hunger = 0f;
-            petData.isDead = true;
-            petData.statusText = "Dead";
-        }
     }
+
 
     private static void NormalizeCurrency(CurrencyData currencyData)
     {
@@ -162,11 +159,25 @@ public static class SaveNormalizer
 
             skill.id = string.IsNullOrWhiteSpace(skill.id) ? "skill_" + Guid.NewGuid().ToString("N") : skill.id.Trim();
             skill.name = skill.name ?? string.Empty;
-            skill.icon = skill.icon ?? string.Empty;
-            skill.percent = Mathf.Clamp(skill.percent, 0f, 100f);
+            if (string.IsNullOrWhiteSpace(skill.archetypeId))
+            {
+                skill.archetypeId = SkillArchetypeCatalog.ResolveArchetypeIdFromLegacyIcon(skill.icon);
+            }
+
+            skill.archetypeId = SkillArchetypeCatalog.NormalizeArchetypeId(skill.archetypeId);
+            skill.icon = SkillArchetypeCatalog.GetCanonicalIcon(skill.archetypeId);
+            if (skill.totalSP <= 0 && skill.percent > 0f)
+            {
+                skill.totalSP = SkillProgressionModel.GetTotalSPForAxisPercent(skill.percent);
+            }
+
+            skill.totalSP = SkillProgressionModel.ClampTotalSP(skill.totalSP);
+            skill.decayDebtSP = Mathf.Clamp(skill.decayDebtSP, 0, skill.totalSP);
+            skill.isGolden = SkillProgressionModel.IsMaxed(skill.totalSP);
             skill.bonusExpMultiplier = Mathf.Max(0f, skill.bonusExpMultiplier);
             skill.totalFocusMinutes = Mathf.Max(0, skill.totalFocusMinutes);
             skill.lastFocusDate = NormalizeTimestamp(skill.lastFocusDate);
+            skill.percent = 0f;
         }
     }
 
@@ -206,10 +217,14 @@ public static class SaveNormalizer
             mission.requiredMinutes = Mathf.Max(0f, mission.requiredMinutes);
             mission.progressMinutes = Mathf.Clamp(mission.progressMinutes, 0f, mission.requiredMinutes > 0f ? mission.requiredMinutes : Mathf.Max(0f, mission.progressMinutes));
             mission.rewardCoins = Mathf.Max(0, mission.rewardCoins);
-            mission.rewardXp = Mathf.Max(0, mission.rewardXp);
             mission.rewardMood = Mathf.Max(0, mission.rewardMood);
             mission.rewardEnergy = Mathf.Max(0, mission.rewardEnergy);
-            mission.rewardSkillPercent = Mathf.Max(0f, mission.rewardSkillPercent);
+            if (mission.rewardSkillSP <= 0 && mission.rewardSkillPercent > 0f)
+            {
+                mission.rewardSkillSP = Mathf.Max(5, Mathf.RoundToInt(mission.rewardSkillPercent * 10f));
+            }
+
+            mission.rewardSkillSP = Mathf.Max(0, mission.rewardSkillSP);
             mission.rewardSkillId = mission.rewardSkillId ?? string.Empty;
         }
 
@@ -229,6 +244,57 @@ public static class SaveNormalizer
     private static void NormalizeDailyReward(DailyRewardData dailyRewardData)
     {
         dailyRewardData.lastClaimDate = dailyRewardData.lastClaimDate ?? string.Empty;
+    }
+
+    private static void NormalizeIdle(IdleData idleData)
+    {
+        if (idleData == null)
+        {
+            return;
+        }
+
+        idleData.currentActionId = idleData.currentActionId ?? string.Empty;
+        idleData.currentArchetypeId = SkillArchetypeCatalog.NormalizeArchetypeId(idleData.currentArchetypeId);
+        idleData.currentActionStartedAtUtcTicks = Math.Max(0L, idleData.currentActionStartedAtUtcTicks);
+        idleData.nextActionAtUtcTicks = Math.Max(0L, idleData.nextActionAtUtcTicks);
+        idleData.lastEventAtUtcTicks = Math.Max(0L, idleData.lastEventAtUtcTicks);
+        idleData.lastResolvedUtcTicks = Math.Max(0L, idleData.lastResolvedUtcTicks);
+        idleData.pendingEvents ??= new List<IdleEventEntryData>();
+        idleData.collectedMomentIds ??= new List<string>();
+
+        for (int i = idleData.pendingEvents.Count - 1; i >= 0; i--)
+        {
+            IdleEventEntryData entry = idleData.pendingEvents[i];
+            if (entry == null)
+            {
+                idleData.pendingEvents.RemoveAt(i);
+                continue;
+            }
+
+            entry.id = string.IsNullOrWhiteSpace(entry.id) ? "idle_" + Guid.NewGuid().ToString("N") : entry.id.Trim();
+            entry.type = NormalizeIdleEventType(entry.type);
+            entry.archetypeId = SkillArchetypeCatalog.NormalizeArchetypeId(entry.archetypeId);
+            entry.title = entry.title ?? string.Empty;
+            entry.summary = entry.summary ?? string.Empty;
+            entry.coins = Mathf.Max(0, entry.coins);
+            entry.itemId = entry.itemId ?? string.Empty;
+            entry.skinId = entry.skinId ?? string.Empty;
+            entry.momentId = entry.momentId ?? string.Empty;
+            entry.createdAtUtcTicks = Math.Max(0L, entry.createdAtUtcTicks);
+            entry.source = NormalizeIdleEventSource(entry.source);
+        }
+
+        for (int i = idleData.collectedMomentIds.Count - 1; i >= 0; i--)
+        {
+            string momentId = idleData.collectedMomentIds[i];
+            if (string.IsNullOrWhiteSpace(momentId))
+            {
+                idleData.collectedMomentIds.RemoveAt(i);
+                continue;
+            }
+
+            idleData.collectedMomentIds[i] = momentId.Trim();
+        }
     }
 
     private static void NormalizeFocusState(FocusStateData focusStateData)
@@ -271,15 +337,44 @@ public static class SaveNormalizer
                 focusStateData.lastResult.plannedDurationSeconds > 0f
                     ? focusStateData.lastResult.plannedDurationSeconds
                     : Mathf.Max(0f, focusStateData.lastResult.actualDurationSeconds));
-            focusStateData.lastResult.previousPercent = Mathf.Clamp(focusStateData.lastResult.previousPercent, 0f, 100f);
-            focusStateData.lastResult.newPercent = Mathf.Clamp(focusStateData.lastResult.newPercent, 0f, 100f);
-            focusStateData.lastResult.deltaProgress = Mathf.Max(0f, focusStateData.lastResult.deltaProgress);
+            if (focusStateData.lastResult.previousTotalSP <= 0 && focusStateData.lastResult.previousPercent > 0f)
+            {
+                focusStateData.lastResult.previousTotalSP = SkillProgressionModel.GetTotalSPForAxisPercent(focusStateData.lastResult.previousPercent);
+            }
+
+            if (focusStateData.lastResult.newTotalSP <= 0 && focusStateData.lastResult.newPercent > 0f)
+            {
+                focusStateData.lastResult.newTotalSP = SkillProgressionModel.GetTotalSPForAxisPercent(focusStateData.lastResult.newPercent);
+            }
+
+            focusStateData.lastResult.previousTotalSP = SkillProgressionModel.ClampTotalSP(focusStateData.lastResult.previousTotalSP);
+            focusStateData.lastResult.newTotalSP = SkillProgressionModel.ClampTotalSP(
+                Mathf.Max(focusStateData.lastResult.previousTotalSP, focusStateData.lastResult.newTotalSP));
+            focusStateData.lastResult.skillSpReward = Mathf.Max(0, focusStateData.lastResult.skillSpReward);
+            if (focusStateData.lastResult.skillSpReward <= 0 && focusStateData.lastResult.newTotalSP >= focusStateData.lastResult.previousTotalSP)
+            {
+                focusStateData.lastResult.skillSpReward = focusStateData.lastResult.newTotalSP - focusStateData.lastResult.previousTotalSP;
+            }
+
+            focusStateData.lastResult.previousLevel = SkillProgressionModel.GetLevel(focusStateData.lastResult.previousTotalSP);
+            focusStateData.lastResult.newLevel = SkillProgressionModel.GetLevel(focusStateData.lastResult.newTotalSP);
+            focusStateData.lastResult.previousAxisPercent = SkillProgressionModel.GetAxisPercent(focusStateData.lastResult.previousTotalSP);
+            focusStateData.lastResult.newAxisPercent = SkillProgressionModel.GetAxisPercent(focusStateData.lastResult.newTotalSP);
+            focusStateData.lastResult.previousProgressInLevel01 = SkillProgressionModel.GetProgressInLevel01(focusStateData.lastResult.previousTotalSP);
+            focusStateData.lastResult.newProgressInLevel01 = SkillProgressionModel.GetProgressInLevel01(focusStateData.lastResult.newTotalSP);
+            focusStateData.lastResult.previousPercent = focusStateData.lastResult.previousAxisPercent;
+            focusStateData.lastResult.newPercent = focusStateData.lastResult.newAxisPercent;
+            focusStateData.lastResult.deltaProgress = Mathf.Max(0f, focusStateData.lastResult.newAxisPercent - focusStateData.lastResult.previousAxisPercent);
             focusStateData.lastResult.coinsReward = Mathf.Max(0, focusStateData.lastResult.coinsReward);
             focusStateData.lastResult.xpReward = Mathf.Max(0, focusStateData.lastResult.xpReward);
-            focusStateData.lastResult.energyReward = Mathf.Max(0f, focusStateData.lastResult.energyReward);
-            focusStateData.lastResult.moodReward = Mathf.Max(0f, focusStateData.lastResult.moodReward);
+            focusStateData.lastResult.energyReward = 0f;
+            focusStateData.lastResult.moodReward = 0f;
             focusStateData.lastResult.energyBefore = Mathf.Clamp(focusStateData.lastResult.energyBefore, 0f, 100f);
             focusStateData.lastResult.energyAfter = Mathf.Clamp(focusStateData.lastResult.energyAfter, 0f, 100f);
+            focusStateData.lastResult.lowEnergyPenaltyApplied = false;
+            focusStateData.lastResult.becameGolden = SkillProgressionModel.IsMaxed(focusStateData.lastResult.newTotalSP)
+                && !SkillProgressionModel.IsMaxed(focusStateData.lastResult.previousTotalSP);
+            focusStateData.lastResult.isGolden = SkillProgressionModel.IsMaxed(focusStateData.lastResult.newTotalSP);
         }
     }
 
@@ -327,5 +422,25 @@ public static class SaveNormalizer
         }
 
         return string.Empty;
+    }
+
+    private static string NormalizeIdleEventType(string rawType)
+    {
+        string normalized = string.IsNullOrWhiteSpace(rawType) ? string.Empty : rawType.Trim().ToLowerInvariant();
+        switch (normalized)
+        {
+            case "chest":
+            case "moment":
+            case "rare":
+                return normalized;
+            default:
+                return "coins";
+        }
+    }
+
+    private static string NormalizeIdleEventSource(string rawSource)
+    {
+        string normalized = string.IsNullOrWhiteSpace(rawSource) ? string.Empty : rawSource.Trim().ToLowerInvariant();
+        return normalized == "offline" ? "offline" : "live";
     }
 }

@@ -6,23 +6,19 @@ public enum PetFlowState
     Healthy,
     Warning,
     Critical,
-    Dead,
-    Revived
+    Neglected
 }
 
 [Serializable]
 public enum PetPriorityStatus
 {
     None,
-    Dead,
+    Neglected,
     Starving,
-    Exhausted,
     LowMood,
     Hungry,
-    Tired,
     Normal,
-    Full,
-    Revived
+    Full
 }
 
 [Serializable]

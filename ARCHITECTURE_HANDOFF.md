@@ -15,18 +15,104 @@
 Сейчас strongest parts:
 
 - `Skills + Radar`
+- `Skill Archetype` semantic-layer поверх свободных навыков
+- `Idle v1` status-first слой на `Home`: действия питомца по archetype, inbox и modest rewards без пассивного `SP`
 - `Focus core loop`
 - `MissionSystem + mission UX`
 - `Save/Load + offline recovery`
+- `Battle / Shop / Room` как уже рабочие v1 screen flows
+- базовый acceptance-pass по shell, save/load и screen flows без найденных blocker-ов
 
 Части, которые ещё не выглядят как “завершённый продукт”:
 
-- полноценный `Shop` screen
-- полноценный `Room` screen
-- battle/boss layer
-- дальнейшая архитектурная разгрузка `GameManager`
+- последний подтверждённый полный `EditMode` прогон на cleanup-этапе = `175/175 passed`
+- дальнейшая декомпозиция `MissionSystem.Generation.cs` по смысловым зонам
+- mixed scene/runtime UI assembly
+- visual/mobile polish по `Home` idle strip, result/popup states и финальным screen layouts
+
+Практический execution-чеклист для acceptance вынесен отдельно в [ACCEPTANCE_CHECKLIST.md](/G:/Tamahabchi/ACCEPTANCE_CHECKLIST.md).
+
+Текущее состояние acceptance: `Phase 1` и `Phase 2` подтверждены, `Phase 3` и `Phase 4` не выявили product-blocker-ов; heavy UI cleanup по `Shop/Skills/HUD/Focus/Room/Mission` уже выполнен, `Skill Archetype` слой уже интегрирован в `Skills`, `Idle v1` уже встроен в runtime/Home HUD, а следующий шаг — visual/mobile polish, content/icon art pass и runtime/playmode укрепление, а не новый system-layer.
+
+### 1.0.1 Product Lock: pet XP / pet level removed from active scope
+
+На `2026-04-11` инженерно фиксируем то же правило, что и в `ТЗ` / `ROADMAP`:
+
+- `pet XP` и `pet level` не участвуют в активном gameplay loop;
+- `Focus`, `Missions`, `Routines`, `Battle`, `Shop` и `Feed` не выдают опыт питомцу;
+- `Room` upgrade и другие продуктовые unlock-гейты не используют уровень питомца;
+- legacy-поля `progression.level` / `progression.xp` допускаются только для совместимости сейвов;
+- legacy `rewardXp` в mission/battle runtime и старые XP-gain knobs больше не являются активным runtime-контрактом.
+
+Если ниже встречаются старые упоминания `XP/level`, считать их историческими заметками, а не текущим источником истины.
+
+### 1.1 Актуальная skill progression model (на 2026-04-11)
+
+После последних изменений `Skills` больше не живут на старом `percent` как business truth.
+
+Текущая runtime-модель:
+
+- source of truth у навыка: `totalSP`
+- вычисляемые значения:
+  - `level`
+  - `progressInLevel`
+  - `requiredSPForNextLevel`
+  - `progressInLevel01`
+  - `axisPercent`
+- progression table:
+  - `100, 160, 256, 410, 656, 1050, 1680, 2688, 4300, 6880`
+- уровни: `Lv.0..Lv.10`
+- `axisPercent` считается по level bands:
+  - каждый завершённый уровень = `10%`
+  - текущий прогресс уровня заполняет следующий `10%` сегмент
+  - maxed skill = `100%`
+- `Golden` привязан к max level, а не к legacy `percent >= 100`
+- `FocusCoordinator` и `MissionSystem` теперь работают со skill rewards в `SP`
+- старое поле `percent` сохранено только как legacy migration field для сейвов
+- поверх имени навыка теперь живёт semantic-layer `archetypeId`
+- поле `icon` сохранено как canonical compatibility token (`MTH`, `ART`, `MSC` и т.д.), который продолжает кормить старый icon/UI путь
+- `SaveNormalizer` обязан мигрировать старые навыки по схеме `icon -> archetypeId`, неизвестные значения идут в `general`
+
+Практический смысл для новых изменений:
+
+- не добавлять новую progression-логику в UI;
+- не читать `skill.percent` как истинное значение прогресса;
+- любые ranking/top-skill/radar вычисления должны идти через computed `axisPercent` из systems/read-model слоя.
+- не завязывать баланс, формулы `SP` или mission rewards на `archetypeId` без отдельного продуктового решения.
+
+### 1.1.1 Idle v1 (на 2026-04-13)
+
+Что уже реально есть в коде:
+
+- `IdleData` встроен в save schema; `SaveNormalizer.CurrentSaveVersion = 7`
+- `IdleBehaviorSystem` выбирает действия каждые `20–35s`, использует top-3 навыка по `axisPercent` и `Skill Archetype`
+- `IdleCoordinator` связывает `SkillsSystem`, `PetSystem`, `CurrencySystem`, `InventorySystem` и `RoomData`
+- в `Critical / Neglected` состоянии idle продолжает показывать действия, но не генерирует награды
+- live/offline idle создаёт только modest rewards: `coins`, `chest`, `moment`, `rare`
+- idle не выдаёт `SP`, уровни, mission progress или pet XP
+- `HUDUI` уже показывает компактный `Home` idle block: icon, action text, summary, badge и кнопку `Забрать`
+- offline-pass capped: максимум `8h`, `1` opportunity каждые `15m`, максимум `4` новых события за возврат
 
 ---
+
+### 1.2 ?????????? pet model (?? 2026-04-11)
+???? ? handoff ??? ??????????? legacy-???????? death / revive ? energy ??? ????? runtime-core. ??? ???????? ???? ??? ??? ?? source of truth.
+??????? runtime-??????:
+- ???????? ?????????? state: Neglected
+- ????:
+  - hunger <= 0 && mood <= 0
+- ?????:
+  - hunger > 0 || mood > 0
+- Dead / Revive ?????? ?? ???????? ???????? gameplay flow
+- SkillDecaySystem ????????? +1 decayDebtSP ?? ?????? ?????? ??? neglect
+- effectiveSP = max(0, totalSP - decayDebtSP) ???????????? ???:
+  - radar
+  - ranking ???????
+  - battle power
+- level ?????? ???????? ?? 	otalSP
+- Focus ? neglect ???????????? ? ?? ????? ???? bypass ??? care-loop
+- Energy ???????? ?????? ??? legacy save-field, ?? ?? ????????? ? core gameplay
+???? ???? ??????????? ?????? ???????? ?????? ??????? ??? revive flow, ??????? ??? legacy-??????.
 
 ## 2. Технологический срез
 
@@ -77,6 +163,24 @@
 - `Data` — сериализуемые DTO/containers
 - `GameManager` — текущий composition root и orchestration hub
 
+### 3.1 Files to trust for current skill progression and idle
+
+Если нужно понять актуальную реализацию навыков и idle-слоя, смотреть в первую очередь сюда:
+
+- [SkillProgressionModel.cs](/G:/Tamahabchi/Assets/Scripts/Systems/SkillProgressionModel.cs)
+- [SkillArchetypeCatalog.cs](/G:/Tamahabchi/Assets/Scripts/Data/SkillArchetypeCatalog.cs)
+- [SkillsSystem.cs](/G:/Tamahabchi/Assets/Scripts/Systems/SkillsSystem.cs)
+- [IdleData.cs](/G:/Tamahabchi/Assets/Scripts/Data/IdleData.cs)
+- [IdleBehaviorSystem.cs](/G:/Tamahabchi/Assets/Scripts/Systems/IdleBehaviorSystem.cs)
+- [IdleCoordinator.cs](/G:/Tamahabchi/Assets/Scripts/Coordinators/IdleCoordinator.cs)
+- [FocusCoordinator.cs](/G:/Tamahabchi/Assets/Scripts/Coordinators/FocusCoordinator.cs)
+- [SaveNormalizer.cs](/G:/Tamahabchi/Assets/Scripts/Persistence/SaveNormalizer.cs)
+- [GameRuntimeLifecycleCoordinator.cs](/G:/Tamahabchi/Assets/Scripts/Coordinators/GameRuntimeLifecycleCoordinator.cs)
+- [SkillsPanelUI.cs](/G:/Tamahabchi/Assets/Scripts/UI/SkillsPanelUI.cs)
+- [SkillArchetypeCardUI.cs](/G:/Tamahabchi/Assets/Scripts/UI/SkillArchetypeCardUI.cs)
+- [FocusPanelUI.cs](/G:/Tamahabchi/Assets/Scripts/UI/FocusPanelUI.cs)
+- [HUDUI.cs](/G:/Tamahabchi/Assets/Scripts/UI/HUDUI.cs)
+
 ---
 
 ## 4. Главный архитектурный принцип проекта
@@ -96,7 +200,7 @@
 
 - доменные правила уже хорошо вынесены в `Systems`
 - orchestration частично вынесен в `Coordinators`
-- но `GameManager` всё ещё толстый и держит много glue-кода
+- `GameManager` всё ещё крупный, но уже работает скорее как composition root/facade, а основной остаточный долг сместился в `MissionSystem.Generation.cs` и mixed scene/runtime UI assembly
 
 Именно это новая команда должна сохранять:
 
@@ -123,6 +227,7 @@
 - wire UI dependencies
 - update loop
 - save lifecycle
+- idle facade для `Home` HUD
 - публичный facade для UI
 
 Ключевой startup flow:
@@ -145,8 +250,8 @@
 Важно:
 
 - это центральная точка, через которую UI получает данные и команды;
-- он поднимает events вроде `OnSkillsChanged`, `OnMissionsChanged`, `OnFocusResultReady`;
-- он же сериализует весь state в `SaveData`.
+- он поднимает events вроде `OnSkillsChanged`, `OnMissionsChanged`, `OnFocusResultReady`, `OnIdleChanged`;
+- он же сериализует весь state в `SaveData`, включая `idleData` и pending idle inbox.
 
 ### 5.2 Systems
 
@@ -160,9 +265,31 @@
 
 - hunger drain
 - mood decay
-- energy/mood/hunger mutation
-- death/revive
-- priority pet state summary (`Normal`, `Hungry`, `Critical`, `Dead`, `Revived`)
+- hunger/mood mutation
+- neglected-state evaluation
+- offline neglect accumulation
+- priority pet state summary (`Normal`, `Hungry`, `Critical`, `Neglected`)
+
+#### `IdleBehaviorSystem`
+
+Файл:
+
+- [IdleBehaviorSystem.cs](/G:/Tamahabchi/Assets/Scripts/Systems/IdleBehaviorSystem.cs)
+
+Отвечает за:
+
+- выбор текущего idle-действия питомца
+- top-3 skill selection по `axisPercent`
+- archetype-driven action labels и icon token
+- gate/cooldown/cap для idle-событий
+- генерацию `coins / chest / moment / rare`
+- capped offline-pass без дублирования событий
+
+Важно:
+
+- это source of truth для idle-логики;
+- он не выдаёт `SP`, уровни или mission progress;
+- `axisPercent` здесь используется только как read-model сигнал для richness/rarity, а не как новая progression-модель.
 
 #### `SkillsSystem`
 
@@ -174,6 +301,9 @@
 
 - список навыков
 - добавление/удаление навыка
+- archetype-aware создание навыка через `AddSkillWithArchetype(...)`
+- compatibility wrapper старого `AddSkill(name, icon)`
+- смену archetype у существующего навыка без потери `totalSP`
 - прогресс навыка от focus
 - golden state на 100%
 - XP bonus от golden skills
@@ -229,11 +359,29 @@
 
 #### `ProgressionSystem`
 
-- XP/level
-- расчёт work reward / focus reward
-- unlock gating для buy flow
+- legacy compatibility для `progression.level/xp`
+- активный gameplay больше не опирается на pet XP / pet level
+- не использовать как источник продуктовых reward/unlock правил
 
 ### 5.3 Coordinators
+
+#### `IdleCoordinator`
+
+Файл:
+
+- [IdleCoordinator.cs](/G:/Tamahabchi/Assets/Scripts/Coordinators/IdleCoordinator.cs)
+
+Роль:
+
+- связывает `IdleBehaviorSystem` с `SkillsSystem`, `PetSystem`, `CurrencySystem`, `InventorySystem` и `RoomData`
+- применяет claim-награды из inbox
+- строит `IdleHomeView` для `HUDUI`
+- решает reward blocking при `Critical / Neglected`
+
+Важно:
+
+- это bridge между idle runtime и остальной экономикой;
+- именно он должен оставаться местом для room hooks и future idle modifiers, а не `HUDUI`.
 
 #### `FocusCoordinator`
 
@@ -280,9 +428,9 @@
 
 Роль:
 
-- dead/revive transitions
-- forced stop focus при смерти питомца
-- revive flow и его побочные эффекты
+- neglected-state transitions
+- forced stop / unblock focus around neglect state
+- care-first flow ? ??? ???????? ???????
 
 #### `SaveLifecycleCoordinator`
 
@@ -351,6 +499,7 @@
 - предыдущий `main` копируется в `backup`
 - при загрузке сначала читается `main`, потом `backup`
 - есть миграция legacy `PlayerPrefs` save
+- в текущей schema уже живут `Skill Archetype` и `IdleData`
 
 Файлы на диске:
 
@@ -369,6 +518,8 @@
 - мигрирует старые поля
 - clamped values
 - нормализует inventory, missions, focus state и timestamps
+- восстанавливает `skills[].archetypeId` из legacy `icon`, если archetype отсутствует или некорректен
+- создаёт и нормализует `idleData`, `pendingEvents` и `collectedMomentIds`
 
 Новая команда должна рассматривать `SaveNormalizer` как обязательную часть любой data migration.
 
@@ -379,13 +530,16 @@ Offline-логика проходит через `GameManager`:
 - вычисляется `pendingOfflineSeconds`
 - применяется daily reset boundary
 - применяется offline focus recovery
+- применяется capped idle offline-pass
 - нормализуется pet state
+- после apply обновляется anti-duplicate timestamp для idle
 
 Особенно чувствительные места:
 
 - focus session, завершившаяся оффлайн
 - reset bucket в `05:00`
 - восстановление `lastResult` после focus
+- повторный вход без нового elapsed time не должен дублировать idle rewards
 
 ---
 
@@ -476,6 +630,8 @@ UI здесь частично scene-based, частично runtime-built.
 
 - список навыков
 - добавление навыка
+- archetype picker cards для создания навыка
+- смена archetype у существующего навыка через compact `Type` action + popup
 - radar chart top skills
 - feedback popup при gain
 
@@ -710,24 +866,23 @@ Shell tabs есть, но их продуктовая наполненность
 
 ## 14. Текущие архитектурные долги
 
-### 14.1 Толстый `GameManager`
+### 14.1 Остаточные hotspots после cleanup `GameManager`
 
-Это главный технический долг проекта.
+`GameManager` всё ещё крупный, но после последних выносов он уже не главный и не самый токсичный долг проекта.
 
-Он до сих пор держит:
+Текущие hotspots:
 
-- bootstrap
-- facade для UI
-- update orchestration
-- save orchestration
-- mission UI sync
-- focus open helpers
-- room/feed/work flows partially via callbacks
+- `MissionSystem.Generation.cs` — тяжёлый generation/composition pipeline, который лучше дальше делить по смысловым зонам, а не по случайным helper-методам;
+- `MissionPanelUI` уже разгружен до panel-flow/binding слоя; повторно открывать большой rewrite не нужно без новой продуктовой причины;
+- mixed scene/runtime UI assembly — риск двойных объектов и legacy scene UI после будущего редизайна;
+- result/popup visual polish в `Focus`, `Missions`, `Battle` — уже не архитектурный blocker, но следующая реальная зона продукта.
 
-Новая команда должна понимать:
+Практическое правило для новой команды:
 
-- не стоит расширять `GameManager` бесконечно
-- новые большие фичи лучше строить через `System + Coordinator + UI`, оставляя `GameManager` точкой сборки
+- не возвращать orchestration обратно в `GameManager`;
+- новые product flows строить через `System + Coordinator + Presenter/ViewUtility + UI`;
+- не возвращать уже разгруженные `Shop/Skills/HUD/Focus/Room` обратно в монолитные panel scripts;
+- оставшийся cleanup делать точечно, а не повторять большой rewrite ради формального идеала.
 
 ### 14.2 Смешанный scene/runtime UI подход
 
@@ -736,7 +891,7 @@ Shell tabs есть, но их продуктовая наполненность
 - трудно понять, что рисуется из сцены, а что из кода
 - легко оставить legacy UI object после рефакторинга
 
-### 14.3 Частично устаревший roadmap
+### 14.3 Частично устаревающие продуктовые документы
 
 - `ROADMAP.md` полезен как продуктовая карта
 - но часть технических статусов уже не совпадает с кодом
@@ -759,29 +914,38 @@ Shell tabs есть, но их продуктовая наполненность
 2. Открыть `Main.unity`
 3. Просмотреть:
    - `GameManager`
+   - `MissionSystem.cs` + `MissionSystem.Generation.cs`
+   - `IdleBehaviorSystem.cs` + `IdleCoordinator.cs`
    - `HUDUI`
    - `AppShellUI`
    - `SkillsPanelUI`
    - `MissionPanelUI`
    - `FocusPanelUI`
+   - `ShopPanelUI`
+   - `RoomPanelUI`
 4. Прогнать EditMode tests
 5. Руками пройти:
    - Home
+   - Idle claim на Home
    - Skills
    - Missions
    - Focus start/complete
    - save/load after restart
+   - offline return с pending idle events
 
 ### Что читать в первую очередь из кода
 
 1. [GameManager.cs](/G:/Tamahabchi/Assets/GameManager.cs)
 2. [FocusCoordinator.cs](/G:/Tamahabchi/Assets/Scripts/Coordinators/FocusCoordinator.cs)
-3. [MissionSystem.cs](/G:/Tamahabchi/Assets/Scripts/Systems/MissionSystem.cs)
-4. [FocusSystem.cs](/G:/Tamahabchi/Assets/Scripts/Systems/FocusSystem.cs)
-5. [SaveManager.cs](/G:/Tamahabchi/Assets/Scripts/Persistence/SaveManager.cs)
-6. [SaveNormalizer.cs](/G:/Tamahabchi/Assets/Scripts/Persistence/SaveNormalizer.cs)
-7. [AppShellUI.cs](/G:/Tamahabchi/Assets/Scripts/UI/AppShellUI.cs)
-8. [HUDUI.cs](/G:/Tamahabchi/Assets/Scripts/UI/HUDUI.cs)
+3. [IdleBehaviorSystem.cs](/G:/Tamahabchi/Assets/Scripts/Systems/IdleBehaviorSystem.cs)
+4. [IdleCoordinator.cs](/G:/Tamahabchi/Assets/Scripts/Coordinators/IdleCoordinator.cs)
+5. [MissionSystem.cs](/G:/Tamahabchi/Assets/Scripts/Systems/MissionSystem.cs)
+6. [MissionSystem.Generation.cs](/G:/Tamahabchi/Assets/Scripts/Systems/MissionSystem.Generation.cs)
+7. [FocusSystem.cs](/G:/Tamahabchi/Assets/Scripts/Systems/FocusSystem.cs)
+8. [SaveManager.cs](/G:/Tamahabchi/Assets/Scripts/Persistence/SaveManager.cs)
+9. [SaveNormalizer.cs](/G:/Tamahabchi/Assets/Scripts/Persistence/SaveNormalizer.cs)
+10. [AppShellUI.cs](/G:/Tamahabchi/Assets/Scripts/UI/AppShellUI.cs)
+11. [HUDUI.cs](/G:/Tamahabchi/Assets/Scripts/UI/HUDUI.cs)
 
 ---
 
@@ -797,6 +961,8 @@ Shell tabs есть, но их продуктовая наполненность
 
 - обновлять `SaveNormalizer`
 - думать о миграции старых save
+- если меняете skill archetypes / icon mapping, синхронно обновлять `SkillArchetypeCatalog` и migration-логику в `SaveNormalizer`
+- если меняете idle schema или reward payload, синхронно проверять `IdleData`, `IdleBehaviorSystem`, `IdleCoordinator`, `HUDUI` и offline-ветку в `GameManager`
 
 ### Если меняете focus flow
 
@@ -819,7 +985,7 @@ Shell tabs есть, но их продуктовая наполненность
 
 Передавать проект другой команде можно как:
 
-> рабочий vertical slice с устойчивым core loop, сохранениями, миссиями, skill progression и shell-based screen navigation, но с оставшимся техническим долгом вокруг `GameManager`, частично смешанного UI assembly и незавершённых product screens `Shop/Room/Battle`.
+> рабочий vertical slice с устойчивым core loop, сохранениями, миссиями, skill progression и shell-based screen navigation, где `Battle`, `Shop` и `Room` уже существуют как v1 screen flows, heavy UI cleanup по ключевым экранам уже выполнен, `EditMode` regression подтверждён (`175/175 passed`), а основной оставшийся техдолг живёт в mixed scene/runtime UI assembly и частично монолитном `MissionSystem.Generation.cs`.
 
 Это важная формулировка, потому что она честная:
 
@@ -833,23 +999,25 @@ Shell tabs есть, но их продуктовая наполненность
 
 Если команда приходит без контекста, самый рациональный план такой:
 
-1. Не начинать с battle
+1. Не открывать новый большой vertical slice поверх текущей базы
 2. Не переписывать весь проект сразу
 3. Зафиксировать handoff build
-4. Провести cleanup-аудит `GameManager`
-5. Довести `Shop` и `Room` до уровня `Skills/Missions/Focus`
-6. Только потом идти в крупный следующий vertical slice
+4. Пройти regression/mobile QA по `Skills`, `Focus`, `Missions`, `Battle`, `Shop`, `Room`, `Home` и `Idle`
+5. Добить visual/mobile polish по `Home` idle strip и result/popup states; `MissionPanelUI` трогать дальше только если появится новая продуктовая причина
+6. Усилить runtime/playmode уверенность именно вокруг `Idle`, `Focus restore`, `Shop`, `Battle` и `offline return`
+7. Только потом идти в новый крупный vertical slice или redesign wave
 
 ---
 
 ## 19. Короткий TL;DR для лида новой команды
 
-- `GameManager` — composition root, но толстый
+- `GameManager` — composition root, но уже не единственный hotspot
 - `Systems` — доменная логика, их надо сохранять source of truth
 - `Coordinators` — правильное место для gameplay orchestration
-- UI частично scene-based, частично runtime-built
+- UI частично scene-based, частично runtime-built, и именно mixed assembly здесь остаётся самым большим практическим долгом
 - `Focus`, `Skills`, `Missions`, `Save/Load` уже рабочие и взаимосвязаны
+- `Idle v1` уже встроен: он отражает прогресс, но не конкурирует с `focus` и не выдаёт `SP`
+- `Battle`, `Shop` и `Room` уже есть как рабочие v1 flows, их не нужно “изобретать заново”
 - `Missions` теперь должны открываться только через нижний shell
 - любые изменения в data/save должны идти через `SaveNormalizer`
 - самый безопасный способ развивать проект — не ломать loops, а строить новые фичи вокруг существующей системной модели
-

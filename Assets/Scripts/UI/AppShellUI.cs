@@ -11,6 +11,7 @@ public enum AppScreen
     Missions,
     Shop,
     Room,
+    Battle,
     Focus
 }
 
@@ -23,6 +24,7 @@ public class AppShellUI : MonoBehaviour
     private MissionPanelUI missionPanelUI;
     private ShopPanelUI shopPanelUI;
     private RoomPanelUI roomPanelUI;
+    private BattlePanelUI battlePanelUI;
     private FocusPanelUI focusPanelUI;
     private HomeDetailsPanelUI homeDetailsPanelUI;
 
@@ -57,7 +59,7 @@ public class AppShellUI : MonoBehaviour
         SyncShellToRuntime();
     }
 
-    public void SetDependencies(GameManager manager, SkillsPanelUI skillsPanel, MissionPanelUI missionPanel, ShopPanelUI shopPanel, RoomPanelUI roomPanel, FocusPanelUI focusPanel, HomeDetailsPanelUI homeDetailsPanel)
+    public void SetDependencies(GameManager manager, SkillsPanelUI skillsPanel, MissionPanelUI missionPanel, ShopPanelUI shopPanel, RoomPanelUI roomPanel, BattlePanelUI battlePanel, FocusPanelUI focusPanel, HomeDetailsPanelUI homeDetailsPanel)
     {
         UnsubscribeFromEvents();
         gameManager = manager;
@@ -65,6 +67,7 @@ public class AppShellUI : MonoBehaviour
         missionPanelUI = missionPanel;
         shopPanelUI = shopPanel;
         roomPanelUI = roomPanel;
+        battlePanelUI = battlePanel;
         focusPanelUI = focusPanel;
         homeDetailsPanelUI = homeDetailsPanel;
         wiredSectionButtons = false;
@@ -131,6 +134,11 @@ public class AppShellUI : MonoBehaviour
         }
 
         return OpenScreen(AppScreen.Room, false);
+    }
+
+    public bool OpenBattle()
+    {
+        return OpenScreen(AppScreen.Battle, false);
     }
 
     public bool OpenFocus(string preselectedSkillId = null)
@@ -225,20 +233,22 @@ public class AppShellUI : MonoBehaviour
                 roomPanelUI.HidePanel();
             }
         }
+
+        if (battlePanelUI != null)
+        {
+            if (currentScreen == AppScreen.Battle)
+            {
+                battlePanelUI.ShowPanel();
+            }
+            else
+            {
+                battlePanelUI.HidePanel();
+            }
+        }
     }
 
     private void SyncShellToRuntime()
     {
-        if (gameManager != null)
-        {
-            PetStatusSummary summary = gameManager.GetPetStatusSummary();
-            if (summary.flowState == PetFlowState.Dead)
-            {
-                ForceHomeAndClearTransient();
-                return;
-            }
-        }
-
         if (focusPanelUI != null && focusPanelUI.IsPanelVisible())
         {
             currentScreen = AppScreen.Focus;
@@ -262,6 +272,10 @@ public class AppShellUI : MonoBehaviour
         else if (roomPanelUI != null && roomPanelUI.IsPanelVisible())
         {
             currentScreen = AppScreen.Room;
+        }
+        else if (battlePanelUI != null && battlePanelUI.IsPanelVisible())
+        {
+            currentScreen = AppScreen.Battle;
         }
         else if (homeDetailsPanelUI != null && homeDetailsPanelUI.IsPanelVisible())
         {
@@ -296,18 +310,6 @@ public class AppShellUI : MonoBehaviour
 
     private void HandlePetFlowChanged()
     {
-        if (gameManager == null)
-        {
-            return;
-        }
-
-        PetStatusSummary summary = gameManager.GetPetStatusSummary();
-        if (summary.flowState == PetFlowState.Dead || summary.flowState == PetFlowState.Revived)
-        {
-            ForceHomeAndClearTransient();
-            return;
-        }
-
         UpdateNavigationState();
         UpdateShellVisuals();
         NotifyScreenChanged();
@@ -339,6 +341,7 @@ public class AppShellUI : MonoBehaviour
             case AppScreen.Missions:
             case AppScreen.Shop:
             case AppScreen.Room:
+            case AppScreen.Battle:
             case AppScreen.HomeDetails:
             case AppScreen.Home:
                 return focusOriginScreen;
@@ -355,6 +358,7 @@ public class AppShellUI : MonoBehaviour
             case AppScreen.Missions:
             case AppScreen.Shop:
             case AppScreen.Room:
+            case AppScreen.Battle:
             case AppScreen.HomeDetails:
             case AppScreen.Home:
                 return currentScreen;
@@ -370,12 +374,7 @@ public class AppShellUI : MonoBehaviour
 
     private bool IsBlockingOverlayActive()
     {
-        if (gameManager == null)
-        {
-            return false;
-        }
-
-        return gameManager.GetPetStatusSummary().flowState == PetFlowState.Dead;
+        return false;
     }
 
     private void SubscribeToEvents()
@@ -618,6 +617,8 @@ public class AppShellUI : MonoBehaviour
                 return "Shop";
             case AppScreen.Room:
                 return "Room";
+            case AppScreen.Battle:
+                return "Battle";
             case AppScreen.Focus:
                 return "Focus";
             default:
@@ -630,6 +631,8 @@ public class AppShellUI : MonoBehaviour
         switch (currentScreen)
         {
             case AppScreen.HomeDetails:
+                return string.Empty;
+            case AppScreen.Battle:
                 return string.Empty;
             case AppScreen.Focus:
                 return "Complete or close focus to return to the previous context.";

@@ -39,21 +39,112 @@
 - **Эмоция:** Тёплая забота + гордость от заполненной паутины + лёгкий вызов (боссы подсказывают, что развивать).
 - **Сессионность:** 5–15 минут в день активного ухода + сессии фокуса от 15 до 60 минут.
 
-### 1.1 Актуальный статус реализации (на 2026-04-08)
+### 1.1 Актуальный статус реализации (на 2026-04-13)
 
 | Блок | Статус | Комментарий |
 |------|--------|-------------|
-| Skills + Radar | **Implemented** | Навыки без жёсткого лимита, ТОП-12, свой `RadarChartGraphic`, без внешней chart-зависимости |
+| Skills + Radar | **Implemented** | Навыки без жёсткого лимита, truth-model = `totalSP`, уровни `Lv.0..Lv.10`, radar по `axisPercent` через level bands, свой `RadarChartGraphic`; поверх навыков уже добавлен semantic-layer `Skill Archetype` с archetype picker и save migration |
 | MissionSystem core | **Implemented** | Daily reset 05:00, weighted generation, claim flow, product-layer UI (`Skill Missions` + `Routines`), custom create flow, 5/5 bonus |
 | Mission debug telemetry | **Implemented** | Dev-only snapshot/report для generation pipeline |
 | Focus core | **Implemented** | Полный `FocusPanel` UX собран: выбор навыка и длительности, pause/resume, cancel, finish early, result screen, save/restore after restart |
-| Pet core | **Partial** | Базовые статы и core flow стабильны, но полноценный pet/room product-layer polish ещё впереди |
-| Shop / Inventory | **Partial** | Базовая логика есть, полноценный `ShopPanel` ещё впереди |
-| Battle | **Planned** | Остаётся целевым блоком roadmap |
-| Architecture cleanup | **Planned** | `Bootstrap / EventBus / thin GameManager` остаются целевой архитектурой |
-| Save / Load | **Implemented** | File-based JSON save в `Application.persistentDataPath`, backup/temp files, нормализация данных и legacy migration из `PlayerPrefs` |
+| Idle System | **Implemented (v1)** | Status-first idle слой уже в runtime: действия питомца по `Skill Archetype`, Home inbox с `Забрать`, modest rewards (`coins/chest/moment/rare`), capped offline-pass и без выдачи `SP` |
+| Pet core | **Partial** | Базовые статы и core flow стабильны; `Critical / Neglected` уже используются как gate для idle rewards, но полноценный pet/room product-layer polish ещё впереди |
+| Shop / Inventory | **Implemented** | Отдельный `ShopPanel`, категории, purchase/use/equip flow, inventory integration |
+| Room screen | **Implemented** | Отдельный `RoomPanel`, upgrade-first vertical slice, save/load и shell integration |
+| Battle | **Implemented (v1)** | `BattlePanel` и `BattleSystem` уже в проекте: roster боссов, `Player Battle Power` vs `Boss Power`, energy gate, reward preview и result UX; core acceptance пройден, дальше — visual/mobile polish |
+| Architecture cleanup | **Mostly complete** | `GameManager` уже разгружен, heavy UI cleanup по `Shop/Skills/HUD/Focus/Room/Mission` выполнен, pre-idle полный `EditMode` regression-pass = `175/175 passed`; поверх этой базы уже встроен `Idle v1`, а текущие остаточные hotspots = `MissionSystem.Generation.cs`, mixed scene/runtime UI assembly, visual/mobile polish и playmode-strengthening |
+| Save / Load | **Implemented** | File-based JSON save в `Application.persistentDataPath`, backup/temp files, normalizer/migration уже подняты до `saveVersion = 7` и теперь включают `Skill Archetype` + `IdleData` |
+
+### 1.1.1 Product Lock: pet XP / pet level removed from current scope
+
+На `2026-04-12` фиксируем для roadmap:
+
+- `pet XP` и `pet level` не участвуют в активном product loop;
+- `Focus`, `Missions`, `Routines`, `Battle`, `Shop` и `Feed` не выдают опыт питомцу;
+- `Room` upgrade и прочие продуктовые unlock-и не используют уровень питомца;
+- основной прогресс игрока идёт через `coins`, `pet state` и рост навыков через `SP`;
+- поля `progression.level` / `progression.xp` могут оставаться в save data только как legacy-совместимость;
+- legacy `rewardXp` в mission/battle runtime и старые XP-gain knobs в `BalanceConfig` больше не являются активным контрактом и удалены из текущего runtime-слоя.
+
+Если ниже в roadmap ещё встречаются упоминания `pet XP` или `pet level`, считать их историческими заметками, а не текущим product contract.
+
+### 1.1.2 Актуальный следующий этап
+
+На `2026-04-13` ближайшее движение по проекту фиксируем так:
+
+- не открываем новый большой gameplay-system поверх текущего vertical slice;
+- `Phase 1` и `Phase 2` acceptance уже подтверждены: shell navigation, save/load, pause/resume и offline apply ведут себя стабильно;
+- `Phase 3` и `Phase 4` не выявили blocker-ов по product-логике; heavy UI cleanup по `ShopPanelUI -> SkillsPanelUI -> HUDUI -> FocusPanelUI -> RoomPanelUI -> MissionPanelUI` уже выполнен;
+- последний подтверждённый полный edit-mode regression-pass на cleanup-этапе = `175/175 passed`; после интеграции `Idle v1` опираемся на clean compile, targeted editor/playmode tests и runtime smoke, потому что сводный `Unity-MCP` totals в этой среде шумный;
+- skill-layer уже усилен `Skill Archetype` слоем: archetype picker в `Skills`, смена типа существующего навыка, compatibility wrapper для старого `icon`-пути и migration старых save;
+- `Idle v1` уже интегрирован: status-first Home idle block, pending inbox, capped live/offline rewards и claim-flow без пассивного `SP`;
+- следующий инженерный спринт = targeted visual/mobile polish для `Home` idle block и result/popup states в `Focus`, `Missions` и `Battle`, content/icon art pass для archetype-иконок и усиление runtime/playmode regression, а не новый system-layer rewrite;
+- playmode/runtime regression дальше усиливаем сценариями вокруг `Idle`, `Focus restore`, `Shop`, `Missions`, `Battle` и `Room`, а не открываем ещё один большой core-system;
+- `MissionSystem.Generation.cs` дальше дробим только если это реально нужно под новые mission-фичи;
+- `GameManager` больше не считать единственным blocker-ом: он остаётся composition root, а главный остаточный инженерный риск теперь живёт в `MissionPanelUI`, `MissionSystem.Generation.cs` и mixed scene/runtime UI assembly;
+- старые sprint-чеклисты ниже считать историей исполнения и сверять с актуальной статус-таблицей выше.
+
+Практический execution-чеклист для этого этапа вынесен в [ACCEPTANCE_CHECKLIST.md](/G:/Tamahabchi/ACCEPTANCE_CHECKLIST.md).
+
+Техническая оговорка: `Unity-MCP` в этой среде ненадёжен для `execute_code` в `play mode`, поэтому runtime acceptance сейчас опирается на сочетание editor-tests, edit-mode проверок и ручного screen-pass.
+
+### 1.2 Актуальная skill progression model (override для старых percent-секций)
+
+Ниже по документу ещё могут встречаться legacy-упоминания `percent` как основной метрики навыка. Для текущего кода это уже **неактуально**. Реальная модель проекта на `2026-04-11` такая:
+
+- Truth-model навыка: `totalSP`
+- Вычисляемые значения: `level`, `progressInLevel`, `requiredSPForNextLevel`, `progressInLevel01`, `axisPercent`
+- Уровни: `Lv.0..Lv.10`
+- Таблица переходов: `100, 160, 256, 410, 656, 1050, 1680, 2688, 4300, 6880`
+- Паутина (`Radar`) считается **не** как `totalSP / maxSP`, а через level bands:
+  - каждый завершённый уровень = `10%` оси
+  - текущий прогресс уровня заполняет следующий `10%` сегмент
+  - maxed skill = `100%` ось
+- Новый навык стартует как:
+  - `Level 0`
+  - `totalSP = 0`
+  - `axisPercent = 0`
+- `Golden / Maxed` теперь привязаны к `Level 10`, а не к старому `percent >= 100`
+- `Focus` награждает навыки через `SP`, а не через `%`
+- `Mission` skill rewards тоже идут через `SP`
+- Старое поле `percent` оставлено только как legacy migration field для старых сейвов
+- Поверх свободного имени навыка теперь живёт semantic-layer `archetypeId`
+- Поле `icon` сохранено как compatibility/fallback visual token (`MTH`, `ART`, `MSC` и т.д.), а не как player-facing смысловой тип
+- Старые сейвы без `archetypeId` поднимаются через `SaveNormalizer`: `icon -> archetypeId`, неизвестные значения уходят в `general`
+
+Практическое правило для чтения roadmap ниже:
+
+- где написано `процент навыка` как source of truth, читать это как legacy-дизайн;
+- где описаны текущие runtime loops (`Skills`, `Focus`, `Save/Load`, `Radar`), приоритет имеет именно модель `SP -> Level -> Axis Percent`.
 
 ---
+
+### 1.3 ?????????? pet model (override ??? ?????? death/revive-??????)
+???? ?? roadmap ??? ????? ??????????? legacy-????? ??? death / revive, energy ??? core-???? ? revive-?????????. ??? ???????? ???? ??? ??? **???????????**.
+???????? runtime-?????? ??????? ?? 2026-04-11:
+- ???????? punishment-????????: PetState.Neglected
+- ???? ? Neglected:
+  - hunger <= 0 && mood <= 0
+- ????? ?? Neglected:
+  - hunger > 0 || mood > 0
+- ?? ????? Neglected:
+  - Focus ??????????
+  - skill decay ???? ????? decayDebtSP
+  - rate ? 1: +1 decayDebtSP ?? ?????? ?????? ??? neglect
+- ???? ?????? ????????? ???:
+  - effectiveSP = max(0, totalSP - decayDebtSP)
+- Radar, ranking ? battle power ?????????? effectiveSP
+- Level ?????? ????????? ?????? ?? 	otalSP ? ?? ?????? ??-?? neglect
+- Focus ??????????????? ???? ?????? ????? ???? 	otalSP:
+  - 1 ?????? = 1 SP
+  - -1 mood ?? ??????
+- Energy ?????? ?? ????????? ? core loop:
+  - ???????? ?????? ??? legacy save-field
+  - ?? ???????????? ??? ??????????, focus cost/reward ? ????????? UX
+- Dead / Revive flow ?????? ?? ???????? ???????? ??????????? ?????????
+???????????? ??????? ?????? roadmap ????:
+- ??? ??????? ?????? ???????, revive token, revive economy ??? energy ??? runtime-core, ?????? ??? ??? legacy-??????;
+- ??? ??????? ??????? pet/skills/battle loops, ????????? ????? ?????? ?????? Neglect + decayDebtSP + effectiveSP.
 
 ## 2. Архитектура проекта
 
@@ -70,7 +161,8 @@
 
 **Текущая runtime-реальность:**
 - `Systems` уже являются source of truth для миссий, навыков, питомца и магазина.
-- `GameManager` пока ещё толще целевой архитектуры и держит часть orchestration/UI glue.
+- `GameManager` остаётся composition root и facade для UI, но главный остаточный риск уже сместился в `MissionPanelUI`, `MissionSystem.Generation.cs` и mixed scene/runtime UI assembly, а не в сам `GameManager`.
+- `Idle v1` уже встроен в runtime через `IdleBehaviorSystem + IdleCoordinator + HUDUI`, а не как отдельный временный мод.
 - `Bootstrap`, `SceneLoader` и полноценный `EventBus` остаются целевым направлением, а не текущим фактом.
 - Схема папок ниже описывает target structure, а не точную карту текущего репозитория один-в-один.
 
@@ -184,13 +276,9 @@ public class RoutineCompletedEvent {
 public class Skill {
     public string id;                 // UUID, генерируется при создании
     public string name;               // "Математика", макс 20 символов
-    public string iconId;             // "📐" или ссылка на sprite
-    public float percent;             // 0.0 – 100.0
-    public bool isGolden;             // достиг ли 100% (хотя бы раз)
-    public float bonusExpMultiplier;  // +0.05 за каждый 100% (накопительно)
-    public int timesReached100;       // сколько раз достигал 100%
-    public DateTime lastFocusDate;    // для статистики
-    public int totalFocusMinutes;     // общее время фокуса на навык
+    public string icon;               // canonical fallback token: "MTH", "ART", "MSC"
+    public string archetypeId;        // "logic", "music", "mindfulness" и т.д.
+    public int totalSP;               // source of truth для прогрессии
 }
 ```
 
@@ -199,9 +287,9 @@ public class Skill {
 | № | Правило |
 |---|---------|
 | 1 | **НЕТ ОГРАНИЧЕНИЯ** на количество навыков. Можно добавить 100+. Проверено на 500+ |
-| 2 | Удалить навык можно ТОЛЬКО если percent == 0 |
-| 3 | Если percent > 0 → кнопка 🗑️ НЕАКТИВНА (disabled) |
-| 4 | Проценты растут ТОЛЬКО от фокуса на этот конкретный навык |
+| 2 | Удалить навык можно ТОЛЬКО если `totalSP == 0` |
+| 3 | Если `totalSP > 0` → кнопка 🗑️ НЕАКТИВНА (disabled) |
+| 4 | Навык растёт ТОЛЬКО от фокуса на этот конкретный навык; рост считается в `SP` |
 | 5 | При достижении 100%: питомец получает перманентный бонус +5% к опыту за фокус на этот навык |
 | 6 | При 100% вершина на паутине становится ЗОЛОТОЙ и пульсирует |
 | 7 | Первые 3 навыка — бесплатно. 4-й и далее — 50 монет за новый слот |
@@ -209,33 +297,32 @@ public class Skill {
 ### 3.3 Формула роста навыка
 
 ```csharp
-float CalculateSkillGain(int minutes, int petLevel, int petMood) {
-    // Базовая прибавка: 3% за 15 минут
-    float baseGain = (minutes / 5f) * (1.0f + (petLevel - 1) * 0.02f);
-    // Бонус от настроения питомца (0.5 – 1.5)
-    float moodBonus = 0.5f + (petMood / 100f);
-    float finalGain = baseGain * moodBonus;
-    return Mathf.Min(finalGain, 100f - currentPercent);
+int CalculateSkillPointsFromFocusDuration(float durationSeconds) {
+    if (durationSeconds <= 0f) {
+        return 0;
+    }
+
+    return Mathf.Max(0, Mathf.FloorToInt(durationSeconds / 60f));
 }
 ```
 
 **Примеры:**
-- 15 минут, уровень 1, настроение 50 → (15/5)*1.0 = 3.0%, 3.0 * 1.0 = 3.0%
-- 15 минут, уровень 5, настроение 100 → (15/5)*1.08 = 3.24%, 3.24 * 1.5 = 4.86%
-- 60 минут, уровень 10, настроение 100 → (60/5)*1.18 = 14.16%, 14.16 * 1.5 = 21.24%
+- 15 минут → `15 SP`
+- 25 минут → `25 SP`
+- 60 минут → `60 SP`
+- дальнейший UI-прогресс считается через `SP -> Level -> axisPercent`
 
 ### 3.4 SkillSystem API
 
 ```csharp
 public class SkillSystem {
-    public List<Skill> GetAllSkills();
-    public List<Skill> GetTopSkills(int count); // count = 12 для диаграммы
-    public void AddSkill(string name, string iconId);
-    public bool RemoveSkill(string skillId);    // только если percent == 0
-    public void AddProgress(string skillId, float deltaPercent);
-    public float GetTotalSkillPercent();
-    public int GetSkillCount();
-    public List<Skill> GetGoldenSkills();
+    public List<Skill> GetSkills();
+    public List<SkillProgressionViewData> GetSkillProgressionViews();
+    public Skill AddSkillWithArchetype(string name, string archetypeId);
+    public Skill AddSkill(string name, string icon); // legacy compatibility wrapper
+    public bool ChangeSkillArchetype(string skillId, string archetypeId);
+    public bool RemoveSkill(string skillId);    // только если totalSP == 0
+    public SkillProgressResult ApplySkillPoints(string skillId, int deltaSP, ...);
 }
 ```
 
@@ -312,13 +399,13 @@ public void UpdateRadarChart() {
 
 ```
 ┌────────────────────────────────────────────────────────────┐
-│ [❤️80] [⚡50] [😊70]              🧙5 │ 🪙150              │
+│ [❤️80] [⚡50] [😊70]                    │ 🪙150              │
 ├────────────────────────────────────────────────────────────┤
 │                      ┌─────────────┐                       │
 │                      │   (◕‿◕)     │ ← питомец (анимация)   │
 │                      │    /|\       │   Idle/Happy/Sad      │
 │                      └─────────────┘                       │
-│              Опыт: ████████░░░░░░░░ 450/1000 (45%)         │
+│              В трекинге: 6 навыков                         │
 ├────────────────────────────────────────────────────────────┤
 │                   🕸️ ПАУТИННАЯ ДИАГРАММА                    │
 │                         (ТОП-12)                           │
@@ -343,14 +430,15 @@ public void UpdateRadarChart() {
 - **Центр:** ScrollRect с VerticalLayoutGroup
 - **Каждый элемент навыка:**
   - Иконка (32x32)
-  - Название + кнопка редактирования (карандаш) — для смены иконки/названия за монеты
+  - Название + compact action `Type` — для смены archetype без изменения `totalSP`
   - ProgressBar (заполнение от 0 до 100%)
   - Текст процента (например "85%")
   - Кнопка 🎯 (быстрый фокус) — открывает FocusPanel с этим навыком
-  - Кнопка 🗑️ (активна ТОЛЬКО если percent == 0)
+  - Кнопка 🗑️ (активна ТОЛЬКО если `totalSP == 0`)
 - **Кнопка добавить навык:**
-  - Popup: поле ввода (макс 20 символов), сетка иконок (20 базовых)
-  - Цена: первые 3 навыка бесплатно, затем 50 монет за новый слот
+  - Popup: поле ввода (макс 20 символов) + archetype cards вместо raw icon-строк
+  - выбор archetype сразу задаёт semantic-тип навыка и canonical fallback `icon`
+  - цена: первые 3 навыка бесплатно, затем 50 монет за новый слот
 
 ### 5.3 Экран заданий (MissionPanel) — ДВА ТИПА
 
@@ -365,17 +453,17 @@ public void UpdateRadarChart() {
 ├────────────────────────────────────────────────────────────┤
 │  🎯 НАВЫКОВЫЕ ЗАДАНИЯ (выбери до 5)                        │
 │  ┌────────────────────────────────────────────────────────┐│
-│  │ ☑️ 30 мин Математика    → +45 XP, +4.5% 📐, +30 🪙    ││
-│  │ ☐ 15 мин Танцы          → +22 XP, +3% 💃, +15 🪙     ││
-│  │ ☐ 1 час Программирование → +90 XP, +9% 💻, +60 🪙    ││
+│  │ ☑️ 30 мин Математика    → +30 🪙, +30 SP 📐           ││
+│  │ ☐ 15 мин Танцы          → +15 🪙, +15 SP 💃           ││
+│  │ ☐ 1 час Программирование → +60 🪙, +60 SP 💻          ││
 │  └────────────────────────────────────────────────────────┘│
 │                                                            │
 │  💧 ПРОСТЫЕ РУТИНЫ (можно сколько угодно)                   │
 │  ┌────────────────────────────────────────────────────────┐│
-│  │ ☑️ 2 литра воды          → +10 🪙, +5 XP, +5 настроение││
-│  │ ☐ 8 часов сна            → +15 🪙, +10 XP, +10 энергии ││
-│  │ ☐ Принять душ            → +5 🪙, +3 XP                ││
-│  │ ☐ День без сладостей     → +20 🪙, +10 XP              ││
+│  │ ☑️ 2 литра воды          → +10 🪙, +5 настроение      ││
+│  │ ☐ 8 часов сна            → +15 🪙, +10 ухода          ││
+│  │ ☐ Принять душ            → +5 🪙, +3 ухода            ││
+│  │ ☐ День без сладостей     → +20 🪙, +5 настроение      ││
 │  └────────────────────────────────────────────────────────┘│
 │                                                            │
 │  ✅ Выполнено навыковых: 2/5                               │
@@ -399,7 +487,7 @@ public void UpdateRadarChart() {
 - Питомец анимирован (надевает очки)
 
 **После завершения:**
-- Экран награды: анимация монет, опыта, прогресса навыка
+- Экран награды: анимация монет и прогресса навыка
 - Показ нового процента (например 21% → 24%)
 - Питомец получает +5 к счастью
 
@@ -427,20 +515,20 @@ public void UpdateRadarChart() {
 
 ### 6.3 Награды
 
-| Действие | Монеты | Опыт | Прогресс навыка |
-|----------|--------|------|-----------------|
-| Фокус 15 мин | 30 | 45 | +3% |
-| Фокус 30 мин | 60 | 90 | +6% |
-| Фокус 60 мин | 120 | 180 | +12% |
-| Навыковое задание | 15–60 | 20–90 | +X% |
-| Рутина (вода, душ) | 5–10 | 3–5 | 0 |
-| Рутина (спорт, чтение) | 15–25 | 8–15 | +2–3% |
-| Победа над боссом | 30–90 | 20–70 | 0 |
+| Действие | Монеты | Skill SP / progress | Доп. эффект |
+|----------|--------|---------------------|-------------|
+| Фокус 15 мин | 30 | +30 SP | отклик питомца |
+| Фокус 30 мин | 60 | +60 SP | отклик питомца |
+| Фокус 60 мин | 120 | +120 SP | отклик питомца |
+| Навыковое задание | 15–60 | +15–60 SP | 0 |
+| Рутина (вода, душ) | 5–10 | 0 | настроение / уход |
+| Рутина (спорт, чтение) | 15–25 | +20–30 SP | настроение |
+| Победа над боссом | 30–90 | 0 | guidance / progression check |
 
 ### 6.4 Баланс роста
 - 100% навыка ≈ 8 часов чистого фокуса
 - 6 навыков по 100% ≈ 2–3 месяца игры
-- Уровень питомца: требуется XP = 100 × level
+- `pet level` не участвует в текущем балансе роста
 
 ---
 
@@ -524,16 +612,16 @@ public enum MissionType {
 
 | Рутина | Награда |
 |--------|---------|
-| 2 литра воды | +10 🪙, +5 XP, +5 😊 |
-| 8 часов сна | +15 🪙, +10 XP, +10 ⚡ |
-| Принять душ | +5 🪙, +3 XP |
-| День без сладостей | +20 🪙, +10 XP |
-| Прочитать 15 страниц | +15 🪙, +8 XP, +2% 📖 |
-| День спорта | +25 🪙, +15 XP, +3% ⚽ |
-| Позвонить родным | +10 🪙, +8 XP, +10 😊 |
-| Убраться в комнате | +10 🪙, +5 XP |
-| Помедитировать 10 мин | +8 🪙, +10 XP, +15 ⚡ |
-| Запланировать день | +12 🪙, +6 XP, +5 😊 |
+| 2 литра воды | +10 🪙, +5 😊 |
+| 8 часов сна | +15 🪙, +10 ⚡ |
+| Принять душ | +5 🪙, +3 ухода |
+| День без сладостей | +20 🪙, +5 😊 |
+| Прочитать 15 страниц | +15 🪙, +20 SP 📖 |
+| День спорта | +25 🪙, +30 SP ⚽ |
+| Позвонить родным | +10 🪙, +10 😊 |
+| Убраться в комнате | +10 🪙, +3 ухода |
+| Помедитировать 10 мин | +8 🪙, +15 ⚡ |
+| Запланировать день | +12 🪙, +5 😊 |
 
 ### 8.4 Создание своего задания
 
@@ -544,7 +632,7 @@ public enum MissionType {
 
 **Для рутины:**
 - Название (макс 30 символов)
-- Выбрать награду (монеты, опыт, энергия, настроение, прогресс навыка)
+- Выбрать награду (монеты, уход/энергия, настроение, прогресс навыка)
 - Стоимость создания: 0 монет (первые 3), затем 20 монет
 
 ### 8.5 Прогресс заданий
@@ -639,20 +727,13 @@ public class FocusTimer : MonoBehaviour {
 ### 9.3 Награда за фокус
 
 ```csharp
-public FocusReward CalculateReward(int minutes, Skill skill, PetStats pet) {
-    float skillGain = skillSystem.CalculateSkillGain(minutes, pet.level, pet.mood);
-    int coinsReward = minutes * 2;
-    int xpReward = minutes * 3;
-    int energyRestore = Mathf.RoundToInt(minutes * 0.5f);
-    
-    // Бонус от золотых навыков
-    float expBonus = 1.0f;
-    foreach (var s in skillSystem.GetGoldenSkills()) {
-        expBonus += s.bonusExpMultiplier;
-    }
-    xpReward = Mathf.RoundToInt(xpReward * expBonus);
-    
-    return new FocusReward(skillGain, coinsReward, xpReward, energyRestore);
+public FocusReward CalculateReward(float plannedDurationSeconds, float actualDurationSeconds, string skillId) {
+    int plannedCoinsReward = ScaleByDuration(balanceConfig.baseFocusReward, plannedDurationSeconds);
+    int coinsReward = ApplyCompletionRatio(plannedCoinsReward, actualDurationSeconds, plannedDurationSeconds);
+    int skillSpReward = skillsSystem.CalculateSkillPointsFromFocusDuration(actualDurationSeconds);
+    int petXpReward = 0; // removed from active product scope
+
+    return new FocusReward(skillSpReward, coinsReward, petXpReward, 0f);
 }
 ```
 
@@ -695,6 +776,70 @@ public class Inventory {
 
 ## 11. Боевая система — УМНЫЕ БОССЫ (сравнение паутин)
 
+### 11.0 Battle design v1 (актуальный override)
+
+Ниже по разделу ещё могут встречаться старые идеи про прямое сравнение каждой оси паутины игрока и босса с отдельными бонусами/штрафами к урону. Для `Battle v1` это **не** является основным балансным правилом.
+
+Актуальная `v1`-модель:
+
+- `SP = реальная сила навыка`
+- `Level = UX и читаемая ступень прогрессии`
+- `Boss Power` считается по **cumulative totalSP**, а не по цене одного перехода
+- `Player Battle Power` считается не по всем навыкам подряд, а по `top 3 skills by axisPercent`
+- паутина босса в `v1` используется как визуальный стиль, а не как основная математическая модель боя
+
+#### Формула силы игрока
+
+```text
+Player Battle Power = average(totalSP of top 3 skills by axisPercent)
+```
+
+#### Формула силы босса
+
+`Boss Power` соответствует суммарному `totalSP`, нужному для целевого уровня навыка.
+
+| Босс | Target Level | Boss Power |
+|------|--------------|-----------:|
+| Boss 1 | Lv1 | 100 |
+| Boss 2 | Lv2 | 260 |
+| Boss 3 | Lv3 | 516 |
+| Boss 4 | Lv4 | 926 |
+| Boss 5 | Lv5 | 1582 |
+| Boss 6 | Lv6 | 2632 |
+| Boss 7 | Lv7 | 4312 |
+| Boss 8 | Lv8 | 7000 |
+| Boss 9 | Lv9 | 11300 |
+| Boss 10 | Lv10 | 18180 |
+
+#### Правило победы
+
+```text
+if Player Battle Power >= Boss Power
+    player wins
+else
+    player loses
+```
+
+#### Почему это выбрано для v1
+
+- не наказывает игрока за добавление новых навыков с нулевым прогрессом
+- опирается на реальный `totalSP`, а не на декоративный процент
+- хорошо ложится на уже внедрённую модель `SP -> Level -> Axis Percent`
+- остаётся простой для первого vertical slice battle
+
+#### Практические правила для реализации
+
+- battle unlock имеет смысл открывать только при `минимум 3 tracked skills`
+- tie-break у `top 3`:
+  - сначала `axisPercent`
+  - потом `totalSP`
+  - потом `lastFocusDate`, если нужен стабильный deterministic order
+- `Boss Power` лучше хранить в data table, а не вычислять вручную по месту
+
+#### Статус старого дизайна ниже
+
+Старые блоки ниже про `skillWeb`, per-axis damage modifiers и советы по слабым осям считать `v2/vFuture`-идеями. Они могут вернуться позже как дополнительный shape-bonus слой, но не как главный баланс `Battle v1`.
+
 ### 11.1 Новая логика — сравнение паутин
 
 **Главная идея:** У каждого босса есть своя «паутина навыков» — набор навыков, в которых он силён или слаб.
@@ -714,63 +859,44 @@ public class Boss {
     public int baseDamage;
     public Dictionary<string, float> skillWeb; // skillId → процент
     public int rewardCoins;
-    public int rewardXp;
+    public int rewardXp;                  // legacy field, не используется в текущем v1
     public float itemDropChance;
     public string adviceMessage;
 }
 ```
 
-### 11.3 Примеры боссов
+### 11.3 Примеры боссов для Battle v1
 
-| Босс | Паутина босса | Совет игроку |
-|------|---------------|--------------|
-| Математический дракон | Математика 80%, Логика 70%, Творчество 20% | «Развивай Творчество, чтобы победить!» |
-| Танцевальный тролль | Танцы 75%, Ритм 65%, Спорт 30% | «Спорт поможет против тролля!» |
-| Гоблин-программист | Программирование 85%, Английский 60%, Дизайн 25% | «Подтяни Дизайн для урона!» |
-| Ленивый голем | Все навыки 20% (слабый), но HP 200 | «Любой навык выше 20% даст бонус!» |
-| Хаос-маг | Случайные 3 навыка 80% | «Развивай слабые места мага!» |
+| Босс | Target Level | Boss Power | Совет игроку |
+|------|--------------|-----------:|--------------|
+| Boss 1 | Lv1 | 100 | «Собери хотя бы 3 tracked skills и подними их через Focus.» |
+| Boss 3 | Lv3 | 516 | «Подтяни top-3 навыка, чтобы средняя боевая сила стала стабильнее.» |
+| Boss 5 | Lv5 | 1582 | «Смотри на `Player Battle Power`, а не на общее количество слабых навыков.» |
+| Boss 8 | Lv8 | 7000 | «Для этого тира уже важен сильный top-3 по `axisPercent` и `effectiveSP`.» |
+| Boss 10 | Lv10 | 18180 | «Финальный бой ожидает maxed-профиль и высокий `effectiveSP` у топовых навыков.» |
 
-### 11.4 Расчёт урона
+### 11.4 Расчёт исхода боя
 
 ```csharp
-public (int petDamage, int bossDamage, string advice) CalculateDamage(
-    PetStats pet, List<Skill> playerSkills, Boss boss) {
-    
-    int basePetDamage = pet.level * 2 + Random.Range(1, 7);
-    float petDamageMultiplier = 1.0f;
-    float bossDamageMultiplier = 1.0f;
-    string advice = "";
-    
-    foreach (var bossSkill in boss.skillWeb) {
-        var playerSkill = playerSkills.Find(s => s.id == bossSkill.Key);
-        float playerPercent = playerSkill?.percent ?? 0;
-        
-        if (playerPercent > bossSkill.Value + 10) {
-            petDamageMultiplier += 0.1f;
-        } else if (playerPercent < bossSkill.Value - 10) {
-            bossDamageMultiplier += 0.15f;
-            advice = $"Босс сильнее в {playerSkill?.name ?? bossSkill.Key}! Развивай этот навык!";
-        }
-    }
-    
-    return (Mathf.RoundToInt(basePetDamage * petDamageMultiplier),
-            Mathf.RoundToInt(boss.baseDamage * bossDamageMultiplier), advice);
+public BattleOutcome ResolveBattle(float playerBattlePower, int bossPower) {
+    return playerBattlePower >= bossPower
+        ? BattleOutcome.Win
+        : BattleOutcome.Loss;
 }
 ```
 
 ### 11.5 Flow битвы
 
-1. Игрок нажимает [⚔️ Битва]
-2. Выбирается случайный босс
-3. Показывается экран битвы с паутиной босса и сравнением
-4. Игрок нажимает [АТАКОВАТЬ]:
-   - Проверка энергии (>=10)
-   - Расчёт урона (с учётом сравнения паутин)
-   - Уменьшение HP босса
-   - Босс атакует в ответ
-   - Снижение энергии на 10
-5. Показывается совет: какой навык нужно развивать
-6. При победе: награда (монеты + опыт + шанс предмета)
+1. Игрок открывает `BattlePanel`
+2. Выбирает босса из списка
+3. Видит `Player Battle Power`, `Boss Power`, требование по энергии и reward preview
+4. Нажимает [FIGHT]:
+   - проверка `>= 3 tracked skills`
+   - проверка энергии (`>= 10`)
+   - списание энергии
+   - сравнение `Player Battle Power` и `Boss Power`
+5. Показывается result screen с наградой и guidance
+6. Победа даёт монеты; `pet XP` не выдаётся
 
 ---
 
@@ -795,14 +921,22 @@ public class RoomBonus {
 }
 ```
 
+### 12.3 Product note
+
+- комната в текущем продукте развивается через монеты и текущий tier комнаты;
+- `pet level` не используется как unlock-гейт для room upgrade;
+- это economy/cosmetic progression слой, а не отдельная XP-лесенка питомца.
+
 ---
 
 ## 13. Прогрессия и достижения
 
-### 13.1 Уровень питомца
+### 13.1 Статус pet progression
 
-- Требуется XP: `100 × currentLevel` (level 1→2: 100 XP, 2→3: 200 XP...)
-- За уровень: +1 к урону в битве, +0.02 к множителю навыков
+- `pet XP` и `pet level` выведены из активного product scope;
+- они не используются для наград, unlock-ов, battle rewards и room upgrade;
+- legacy-поля в save допускаются только для обратной совместимости;
+- актуальная вертикаль прогресса игрока — `skills via SP`, монеты и care-state питомца.
 
 ### 13.2 Достижения (примеры)
 
@@ -872,10 +1006,11 @@ public class RoomBonus {
   },
   "skills": [
     {
-      "id": "skill_001", "name": "Математика", "iconId": "📐",
-      "percent": 85.5, "isGolden": false, "bonusExpMultiplier": 0,
-      "timesReached100": 0, "lastFocusDate": "2026-04-08T10:00:00Z",
-      "totalFocusMinutes": 425
+      "id": "skill_001",
+      "name": "Математика",
+      "icon": "MTH",
+      "archetypeId": "logic",
+      "totalSP": 425
     }
   ],
   "inventory": { "items": { "apple": 3, "energy_drink": 1 }, "ownedSkins": ["default"], "equippedSkin": "default" },
@@ -954,26 +1089,27 @@ public class RoomBonus {
 - [x] Прогресс заданий
 - [x] Бонус за все 5 навыковых заданий
 
-### Спринт 6 — Shop + Inventory (2 дня)
-- [ ] ShopPanel (список товаров)
-- [ ] Покупка предметов
-- [ ] Использование предметов из инвентаря
-- [ ] Влияние на параметры питомца
+### Спринт 6 — Shop + Inventory (в проекте, v1)
+- [x] `ShopPanel` как отдельный screen-level таб
+- [x] Покупка предметов
+- [x] Использование и экипировка предметов из инвентаря
+- [x] Интеграция с care-loop питомца без `pet XP`
+- [ ] Дополнительный content polish по категориям/визуалу
 
-### Спринт 7 — Battle System (3 дня) — ОБНОВЛЁННЫЙ
-- [ ] BattlePanel
-- [ ] Боссы с паутиной навыков (5 видов)
-- [ ] Сравнение паутин игрока и босса
-- [ ] Расчёт урона с учётом сравнения
-- [ ] Советы игроку
-- [ ] Расход энергии
-- [ ] Награда за победу
+### Спринт 7 — Battle System (в проекте, Battle v1)
+- [x] `BattlePanel`
+- [x] Roster боссов с визуальной паутиной и `Boss Power`
+- [x] `Player Battle Power = average(top 3 skills by axisPercent using effectiveSP)`
+- [x] Советы игроку, energy gate и reward preview/result UX
+- [x] Награда за победу монетами, без `pet XP`
+- [ ] Runtime polish, tuning и mobile QA
 
-### Спринт 8 — Room + Cosmetics (2 дня)
-- [ ] RoomPanel
-- [ ] Смена фона, лежанки, миски
-- [ ] Покупка и экипировка скинов
-- [ ] Бонусы от комнаты
+### Спринт 8 — Room + Cosmetics (частично завершён)
+- [x] `RoomPanel` как отдельный screen-level таб
+- [x] Upgrade-first vertical slice с save/load и shell integration
+- [x] Базовые визуальные состояния комнаты и mood bonus от upgrade
+- [ ] Более широкий cosmetic catalog / equip variety
+- [ ] Дополнительный content polish комнаты
 
 ### Спринт 9 — Polish + Audio (3 дня)
 - [ ] Звуки (клики, фокус, битва, рутины)
@@ -994,16 +1130,16 @@ public class RoomBonus {
 ## 17. Критерии приёмки (расширенные)
 
 - [ ] Нет крашей при добавлении 50+ навыков
-- [ ] Паутина перерисовывается при каждом изменении процента, показывает ТОП-12
-- [ ] При 100% навыка — золотая вершина и бонус опыта
-- [ ] Нельзя удалить навык с процентом >0 (кнопка неактивна)
-- [ ] Фокус на 15 минут даёт ±3% (погрешность 0.1%)
+- [ ] Паутина перерисовывается при каждом изменении `axisPercent`, показывает ТОП-12
+- [ ] При 100% навыка — золотая вершина и визуальная отметка maxed-состояния
+- [ ] Нельзя удалить навык с ненулевым прогрессом (`totalSP > 0`)
+- [ ] Фокус даёт предсказуемый прирост `SP`, а UI корректно показывает `delta SP`, `level` и `axisPercent`
 - [ ] Питомец умирает при голоде 0, воскрешение работает
 - [ ] Закрытие и открытие игры сохраняет все данные
 - [ ] Ежедневные задания сбрасываются в 5:00
 - [ ] Рутины можно отмечать, награда выдаётся
 - [ ] Можно создать своё задание (навыковое и рутину)
-- [ ] Битва с боссом показывает сравнение паутин
+- [ ] Битва показывает `Player Battle Power`, `Boss Power`, reward preview и guidance без legacy per-axis damage логики
 - [ ] Битва расходует энергию, при энергии <10 нельзя атаковать
 - [ ] Звуки и музыка работают (можно выключить в настройках)
 
@@ -1032,11 +1168,11 @@ public class RoomBonus {
 |------|---------|
 | Radar Chart тормозит при 100+ навыках | Показываем ТОП-12, остальные в списке |
 | Игрок забудет покормить → смерть | Добавить локальное уведомление (v1.2) |
-| Слишком медленный рост навыков | Дать множитель от уровня питомца и счастья |
+| Слишком медленный рост навыков | Тюнить `SP` награды и mood/care modifiers, не возвращая pet XP |
 | Скучно без сюжета | Добавить короткие цитаты питомца при 100% навыка |
 | Android build не проходит из-за размера | Сжать текстуры до 1024x1024, использовать ASTC |
 | Игрок не понимает, зачем развивать паутину | Боссы наглядно показывают слабые места |
-| Рутины кажутся скучными | Давать видимые награды (монеты, опыт, энергия) |
+| Рутины кажутся скучными | Давать видимые награды (монеты, уход, настроение, skill SP) |
 
 ---
 

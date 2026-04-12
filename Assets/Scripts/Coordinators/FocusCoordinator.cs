@@ -8,7 +8,7 @@ public sealed class FocusCoordinatorCallbacks
     public Action OnPetFlowChanged;
     public Action OnProgressionChanged;
     public Action OnSkillsChanged;
-    public Action<string, float, float> OnSkillProgressAdded;
+    public Action<SkillProgressResult> OnSkillProgressAdded;
     public Action OnFocusSessionChanged;
     public Action<FocusSessionResultData> OnFocusResultReady;
     public Func<int> GetCurrentResetBucket;
@@ -67,7 +67,7 @@ public sealed class FocusCoordinator
         lastFocusSessionResult = null;
     }
 
-    public bool Update(float deltaTime, bool petIsDead)
+    public bool Update(float deltaTime, bool focusBlockedByNeglect)
     {
         if (focusSystem == null)
         {
@@ -75,7 +75,7 @@ public sealed class FocusCoordinator
         }
 
         bool focusCompleted = false;
-        if (focusSystem.IsRunning && !petIsDead)
+        if (focusSystem.IsRunning && !focusBlockedByNeglect)
         {
             focusCompleted = focusSystem.Update(deltaTime);
             if (focusCompleted)
@@ -113,6 +113,16 @@ public sealed class FocusCoordinator
             callbacks.ShowFeedback?.Invoke("Select a duration");
             return false;
         }
+
+        if (petSystem != null && petSystem.IsNeglected())
+        {
+            callbacks.ShowFeedback?.Invoke("Pet neglected. Care first.");
+            return false;
+        }
+
+        petSystem?.ReduceMood(1f);
+        callbacks.OnPetChanged?.Invoke();
+        callbacks.OnPetFlowChanged?.Invoke();
 
         selectedFocusSkillId = skill.id;
         lastFocusSessionResult = null;
@@ -217,13 +227,20 @@ public sealed class FocusCoordinator
         return lastFocusSessionResult != null ? lastFocusSessionResult.Clone() : null;
     }
 
-    public void ClearLastResult(bool notify = true)
+    public bool ClearLastResult(bool notify = true)
     {
+        if (lastFocusSessionResult == null)
+        {
+            return false;
+        }
+
         lastFocusSessionResult = null;
         if (notify)
         {
             callbacks.OnFocusSessionChanged?.Invoke();
         }
+
+        return true;
     }
 
     public bool SetSelectedSkill(string skillId)
@@ -305,7 +322,6 @@ public sealed class FocusCoordinator
         string completedSkillId = completionData.skillId ?? string.Empty;
         float completedDurationSeconds = completionData.actualDurationSeconds;
         float completedMinutes = completedDurationSeconds / 60f;
-        float energyBeforeFocusReward = petSystem != null ? petSystem.GetEnergyPercent() : 0f;
         float plannedDurationSeconds = Mathf.Max(0f, completionData.plannedDurationSeconds);
         float baselineSeconds = Mathf.Max(60f, balanceConfig.baseFocusDuration * 60f);
 
@@ -313,77 +329,34 @@ public sealed class FocusCoordinator
             progressionSystem != null ? progressionSystem.GetFocusReward(balanceConfig.baseFocusReward) : 0,
             plannedDurationSeconds,
             baselineSeconds);
-        int basePlannedXpReward = CalculateScaledReward(
-            balanceConfig.focusXpGain,
-            plannedDurationSeconds,
-            baselineSeconds);
-        float plannedEnergyReward = Mathf.Max(0f, plannedDurationSeconds / 60f) * Mathf.Max(0f, balanceConfig.focusEnergyRewardPerMinute);
-        float plannedMoodReward = Mathf.Max(0f, plannedDurationSeconds / 60f) * Mathf.Max(0f, balanceConfig.focusMoodRewardPerMinute);
+        int basePlannedXpReward = 0;
 
         FocusRewardData rewardData = focusSystem.BuildReward(
             plannedDurationSeconds,
             completedDurationSeconds,
             basePlannedCoinsReward,
             basePlannedXpReward,
-            plannedEnergyReward,
-            plannedMoodReward);
+            0f,
+            0f);
 
         int focusReward = rewardData.coins;
-        int focusXpReward = rewardData.xp;
+        int focusXpReward = 0;
         SkillProgressResult skillProgressResult = null;
         SkillMissionProgressResult missionProgressResult = null;
-        bool lowEnergyPenaltyApplied = false;
 
         if (!string.IsNullOrEmpty(completedSkillId) && skillsSystem != null)
         {
-            focusXpReward = skillsSystem.ApplyFocusXpBonus(completedSkillId, focusXpReward);
-        }
-
-        if (energyBeforeFocusReward < balanceConfig.lowEnergyThreshold)
-        {
-            float rewardMultiplier = Mathf.Max(0f, balanceConfig.lowEnergyRewardMultiplier);
-            focusReward = Mathf.Max(0, Mathf.FloorToInt(focusReward * rewardMultiplier));
-            focusXpReward = Mathf.Max(0, Mathf.FloorToInt(focusXpReward * rewardMultiplier));
-            lowEnergyPenaltyApplied = true;
-        }
-
-        if (petSystem != null)
-        {
-            if (rewardData.mood > 0f)
-            {
-                petSystem.AddMood(rewardData.mood);
-            }
-
-            if (rewardData.energy > 0f)
-            {
-                petSystem.AddEnergy(rewardData.energy);
-            }
-
-            callbacks.OnPetChanged?.Invoke();
-            callbacks.OnPetFlowChanged?.Invoke();
-        }
-
-        if (!string.IsNullOrEmpty(completedSkillId) && skillsSystem != null)
-        {
-            float progressAmount = skillsSystem.CalculateProgressFromFocusDuration(
-                completedDurationSeconds,
-                progressionSystem != null ? progressionSystem.GetLevel() : 1,
-                petSystem != null ? petSystem.GetMoodPercent() : 0f,
-                balanceConfig.skillMinutesPerStep,
-                balanceConfig.skillLevelMultiplierStep,
-                balanceConfig.skillMoodBaseBonus,
-                balanceConfig.skillMoodScale);
-
-            skillProgressResult = skillsSystem.ApplyFocusProgress(
+            int skillPointsReward = skillsSystem.CalculateSkillPointsFromFocusDuration(completedDurationSeconds);
+            skillProgressResult = skillsSystem.ApplySkillPoints(
                 completedSkillId,
-                progressAmount,
+                skillPointsReward,
                 completedDurationSeconds,
                 TimeService.GetUtcNow().ToString("O"),
                 balanceConfig.goldenSkillFocusXpBonus);
 
-            if (skillProgressResult.success && skillProgressResult.deltaApplied > 0f)
+            if (skillProgressResult.success && skillProgressResult.deltaSP > 0)
             {
-                callbacks.OnSkillProgressAdded?.Invoke(completedSkillId, skillProgressResult.deltaApplied, skillProgressResult.newPercent);
+                callbacks.OnSkillProgressAdded?.Invoke(skillProgressResult);
                 callbacks.OnSkillsChanged?.Invoke();
             }
 
@@ -399,7 +372,6 @@ public sealed class FocusCoordinator
 
         currencySystem?.AddCoins(focusReward);
         callbacks.OnCoinsChanged?.Invoke();
-        AddXp(focusXpReward, false);
 
         missionSystem?.RecordFocusAction(completedSkillId, completedMinutes);
         missionSystem?.ApplyGenericFocusProgress(completedMinutes, true);
@@ -416,25 +388,27 @@ public sealed class FocusCoordinator
             completionData,
             focusReward,
             focusXpReward,
-            energyBeforeFocusReward,
-            petSystem != null ? petSystem.GetEnergyPercent() : energyBeforeFocusReward,
             rewardData,
-            lowEnergyPenaltyApplied,
             skillProgressResult,
             completedSkillId);
 
         string feedbackMessage = completionData.completedEarly
-            ? $"Focus completed early: +{focusReward} Coins, +{focusXpReward} XP"
-            : $"Focus complete: +{focusReward} Coins, +{focusXpReward} XP";
+            ? $"Focus completed early: +{focusReward} Coins"
+            : $"Focus complete: +{focusReward} Coins";
+
+        if (skillProgressResult != null && skillProgressResult.deltaSP > 0)
+        {
+            feedbackMessage += $" | +{skillProgressResult.deltaSP} SP";
+        }
+
+        if (skillProgressResult != null && skillProgressResult.leveledUp)
+        {
+            feedbackMessage += $" | Lv.{skillProgressResult.previousLevel} -> Lv.{skillProgressResult.newLevel}";
+        }
 
         if (skillProgressResult != null && skillProgressResult.becameGolden)
         {
             feedbackMessage += " | Skill Golden";
-        }
-
-        if (lowEnergyPenaltyApplied)
-        {
-            feedbackMessage += " | Low energy penalty";
         }
 
         if (missionProgressResult != null)
@@ -467,27 +441,6 @@ public sealed class FocusCoordinator
         }
     }
 
-    private void AddXp(int amount, bool saveAfter = true)
-    {
-        if (progressionSystem == null || progressionData == null)
-        {
-            return;
-        }
-
-        int oldLevel = progressionData.level;
-        progressionSystem.AddXp(amount);
-        if (progressionData.level > oldLevel)
-        {
-            callbacks.ShowFeedback?.Invoke($"Level {progressionData.level} reached");
-        }
-
-        callbacks.OnProgressionChanged?.Invoke();
-        if (saveAfter)
-        {
-            callbacks.SaveGame?.Invoke();
-        }
-    }
-
     private int CalculateScaledReward(int baseReward, float plannedDurationSeconds, float baselineSeconds)
     {
         if (baseReward <= 0 || plannedDurationSeconds <= 0f || baselineSeconds <= 0f)
@@ -503,10 +456,7 @@ public sealed class FocusCoordinator
         FocusSessionCompletionData completionData,
         int coinsReward,
         int xpReward,
-        float energyBefore,
-        float energyAfter,
         FocusRewardData rewardData,
-        bool lowEnergyPenaltyApplied,
         SkillProgressResult skillProgressResult,
         string completedSkillId)
     {
@@ -519,17 +469,26 @@ public sealed class FocusCoordinator
             skillIcon = skill != null ? skill.icon : string.Empty,
             plannedDurationSeconds = completionData.plannedDurationSeconds,
             actualDurationSeconds = completionData.actualDurationSeconds,
-            previousPercent = skillProgressResult != null ? skillProgressResult.previousPercent : 0f,
-            newPercent = skillProgressResult != null ? skillProgressResult.newPercent : 0f,
-            deltaProgress = skillProgressResult != null ? skillProgressResult.deltaApplied : 0f,
+            skillSpReward = skillProgressResult != null ? skillProgressResult.deltaSP : 0,
+            previousTotalSP = skillProgressResult != null ? skillProgressResult.previousTotalSP : 0,
+            newTotalSP = skillProgressResult != null ? skillProgressResult.newTotalSP : 0,
+            previousLevel = skillProgressResult != null ? skillProgressResult.previousLevel : 0,
+            newLevel = skillProgressResult != null ? skillProgressResult.newLevel : 0,
+            previousAxisPercent = skillProgressResult != null ? skillProgressResult.previousAxisPercent : 0f,
+            newAxisPercent = skillProgressResult != null ? skillProgressResult.newAxisPercent : 0f,
+            previousProgressInLevel01 = skillProgressResult != null ? skillProgressResult.previousProgressInLevel01 : 0f,
+            newProgressInLevel01 = skillProgressResult != null ? skillProgressResult.newProgressInLevel01 : 0f,
+            previousPercent = skillProgressResult != null ? skillProgressResult.previousAxisPercent : 0f,
+            newPercent = skillProgressResult != null ? skillProgressResult.newAxisPercent : 0f,
+            deltaProgress = skillProgressResult != null ? skillProgressResult.newAxisPercent - skillProgressResult.previousAxisPercent : 0f,
             coinsReward = coinsReward,
             xpReward = xpReward,
-            energyReward = rewardData != null ? rewardData.energy : 0f,
-            moodReward = rewardData != null ? rewardData.mood : 0f,
-            energyBefore = energyBefore,
-            energyAfter = energyAfter,
-            petReaction = rewardData != null && (rewardData.energy > 0f || rewardData.mood > 0f) ? "Happy" : "Steady",
-            lowEnergyPenaltyApplied = lowEnergyPenaltyApplied,
+            energyReward = 0f,
+            moodReward = 0f,
+            energyBefore = petSystem != null ? petSystem.GetEnergyPercent() : 0f,
+            energyAfter = petSystem != null ? petSystem.GetEnergyPercent() : 0f,
+            petReaction = "Steady",
+            lowEnergyPenaltyApplied = false,
             becameGolden = skillProgressResult != null && skillProgressResult.becameGolden,
             isGolden = skillProgressResult != null && skillProgressResult.isGolden
         };

@@ -14,6 +14,7 @@ public class SaveData
     public DailyRewardData dailyRewardData;
     public OnboardingData onboardingData;
     public FocusStateData focusStateData;
+    public IdleData idleData;
     public string lastSeenUtc;
     public int lastResetBucket;
 }

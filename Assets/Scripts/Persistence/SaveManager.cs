@@ -22,17 +22,29 @@ public class SaveManager
         string mainPath = SavePaths.MainSaveFilePath;
         string backupPath = SavePaths.BackupSaveFilePath;
 
-        File.WriteAllText(tempPath, json);
-
-        if (File.Exists(mainPath))
+        try
         {
-            File.Copy(mainPath, backupPath, true);
-            File.Delete(mainPath);
-        }
+            DeleteIfExists(tempPath);
+            File.WriteAllText(tempPath, json);
 
-        File.Move(tempPath, mainPath);
-        PlayerPrefs.SetInt(LegacyMigrationMarkerKey, 1);
-        PlayerPrefs.Save();
+            if (File.Exists(mainPath))
+            {
+                File.Replace(tempPath, mainPath, backupPath, true);
+            }
+            else
+            {
+                File.Move(tempPath, mainPath);
+            }
+
+            PlayerPrefs.SetInt(LegacyMigrationMarkerKey, 1);
+            PlayerPrefs.Save();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"Failed to save file-based JSON save: {ex.Message}");
+            DeleteIfExists(tempPath);
+            throw;
+        }
     }
 
     public SaveData Load()

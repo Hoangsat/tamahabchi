@@ -38,13 +38,13 @@ public class RoomPlayModeTests
         yield return null;
 
         Assert.True(roomPanel.IsPanelVisible());
-        Assert.False(manager.workButton != null && manager.workButton.gameObject.activeSelf);
+        Assert.False(manager.feedButton != null && manager.feedButton.gameObject.activeSelf);
 
         Assert.True(shell.OpenHome());
         yield return null;
 
         Assert.False(roomPanel.IsPanelVisible());
-        Assert.True(manager.workButton != null && manager.workButton.gameObject.activeSelf);
+        Assert.True(manager.feedButton != null && manager.feedButton.gameObject.activeSelf);
     }
 
     [UnityTest]
@@ -68,13 +68,13 @@ public class RoomPlayModeTests
         yield return null;
 
         Assert.True(homeDetailsPanel.IsPanelVisible());
-        Assert.False(manager.workButton != null && manager.workButton.gameObject.activeSelf);
+        Assert.False(manager.feedButton != null && manager.feedButton.gameObject.activeSelf);
 
         Assert.True(shell.OpenHome());
         yield return null;
 
         Assert.False(homeDetailsPanel.IsPanelVisible());
-        Assert.True(manager.workButton != null && manager.workButton.gameObject.activeSelf);
+        Assert.True(manager.feedButton != null && manager.feedButton.gameObject.activeSelf);
         Assert.False(skillsPanel.IsPanelVisible());
         Assert.False(missionPanel.IsPanelVisible());
         Assert.False(focusPanel.IsPanelVisible());
@@ -85,7 +85,7 @@ public class RoomPlayModeTests
         Assert.True(skillsPanel.IsPanelVisible());
         Assert.False(missionPanel.IsPanelVisible());
         Assert.False(focusPanel.IsPanelVisible());
-        Assert.False(manager.workButton != null && manager.workButton.gameObject.activeSelf);
+        Assert.False(manager.feedButton != null && manager.feedButton.gameObject.activeSelf);
 
         Assert.True(shell.OpenMissions());
         yield return null;
@@ -112,7 +112,7 @@ public class RoomPlayModeTests
         Assert.False(skillsPanel.IsPanelVisible());
         Assert.False(missionPanel.IsPanelVisible());
         Assert.False(focusPanel.IsPanelVisible());
-        Assert.True(manager.workButton != null && manager.workButton.gameObject.activeSelf);
+        Assert.True(manager.feedButton != null && manager.feedButton.gameObject.activeSelf);
     }
 
     [UnityTest]
@@ -123,7 +123,6 @@ public class RoomPlayModeTests
 
         manager.currencyData.coins = 120;
         manager.progressionData.level = 4;
-        manager.petData.isDead = false;
         manager.petData.hunger = 50f;
         manager.petData.mood = 50f;
         manager.petData.energy = 50f;
@@ -173,7 +172,7 @@ public class RoomPlayModeTests
         Assert.True(shell.OpenMissions());
         yield return null;
         Assert.False(missionPanel.IsPanelVisible());
-        Assert.True(manager.workButton != null && manager.workButton.gameObject.activeSelf);
+        Assert.True(manager.feedButton != null && manager.feedButton.gameObject.activeSelf);
 
         Assert.True(shell.OpenShop());
         yield return null;
@@ -181,7 +180,7 @@ public class RoomPlayModeTests
         Assert.True(shell.OpenShop());
         yield return null;
         Assert.False(shopPanel.IsPanelVisible());
-        Assert.True(manager.workButton != null && manager.workButton.gameObject.activeSelf);
+        Assert.True(manager.feedButton != null && manager.feedButton.gameObject.activeSelf);
 
         Assert.True(shell.OpenRoom());
         yield return null;
@@ -189,7 +188,7 @@ public class RoomPlayModeTests
         Assert.True(shell.OpenRoom());
         yield return null;
         Assert.False(roomPanel.IsPanelVisible());
-        Assert.True(manager.workButton != null && manager.workButton.gameObject.activeSelf);
+        Assert.True(manager.feedButton != null && manager.feedButton.gameObject.activeSelf);
     }
 
     [UnityTest]

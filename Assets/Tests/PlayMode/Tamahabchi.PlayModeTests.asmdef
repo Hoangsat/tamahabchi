@@ -1,7 +1,8 @@
 {
   "name": "Tamahabchi.PlayModeTests",
   "references": [
-    "Tamahabchi.Runtime"
+    "Tamahabchi.Runtime",
+    "Unity.TextMeshPro"
   ],
   "optionalUnityReferences": [
     "TestAssemblies"

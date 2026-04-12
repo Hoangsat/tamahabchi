@@ -18,6 +18,8 @@ public class FocusPanelUI : MonoBehaviour
     }
 
     private readonly List<Button> skillButtons = new List<Button>();
+    private readonly List<TextMeshProUGUI> skillButtonLabels = new List<TextMeshProUGUI>();
+    private readonly List<string> skillButtonSkillIds = new List<string>();
     private readonly List<Button> durationButtons = new List<Button>();
     private readonly int[] durationPresets = { 15, 30, 45, 60 };
 
@@ -25,6 +27,7 @@ public class FocusPanelUI : MonoBehaviour
     private FocusUiState uiState = FocusUiState.Setup;
     private string selectedSkillId = string.Empty;
     private int selectedDurationMinutes = 15;
+    private int visibleSkillButtonCount;
 
     private GameObject panelRoot;
     private Button closeButton;
@@ -39,6 +42,7 @@ public class FocusPanelUI : MonoBehaviour
     private Slider customDurationSlider;
     private TextMeshProUGUI customDurationValueText;
     private Button startButton;
+    private TextMeshProUGUI startButtonText;
 
     private GameObject activeRoot;
     private TextMeshProUGUI activeSkillText;
@@ -214,6 +218,8 @@ public class FocusPanelUI : MonoBehaviour
         HideCancelConfirm();
 
         List<SkillEntry> skills = gameManager != null ? gameManager.GetSkills() : new List<SkillEntry>();
+        PetStatusSummary petSummary = gameManager != null ? gameManager.GetPetStatusSummary() : null;
+        bool isNeglected = petSummary != null && petSummary.flowState == PetFlowState.Neglected;
         string gmSelected = gameManager != null ? gameManager.GetSelectedFocusSkill() : string.Empty;
         if (!string.IsNullOrEmpty(gmSelected))
         {
@@ -229,49 +235,10 @@ public class FocusPanelUI : MonoBehaviour
             }
         }
 
-        RebuildSkillButtons(skills);
-        RefreshDurationButtons();
-
-        bool hasSkills = skills.Count > 0;
-        if (setupEmptyText != null)
-        {
-            setupEmptyText.gameObject.SetActive(!hasSkills);
-            setupEmptyText.text = "Create at least one skill first";
-        }
-
-        if (addSkillButton != null)
-        {
-            addSkillButton.gameObject.SetActive(!hasSkills);
-        }
-
         SkillEntry skill = FindSkill(skills, selectedSkillId);
-        if (setupSummaryText != null)
-        {
-            setupSummaryText.text = skill == null ? "No valid skill selected." : $"Session: {skill.name} · {selectedDurationMinutes} min";
-        }
-
-        if (customDurationSlider != null)
-        {
-            int clampedDuration = Mathf.Clamp(selectedDurationMinutes, 5, 120);
-            if (Mathf.RoundToInt(customDurationSlider.value) != clampedDuration)
-            {
-                customDurationSlider.SetValueWithoutNotify(clampedDuration);
-            }
-        }
-
-        if (customDurationValueText != null)
-        {
-            customDurationValueText.text = $"{selectedDurationMinutes} min";
-        }
-
-        if (startButton != null)
-        {
-            startButton.interactable = hasSkills && !string.IsNullOrEmpty(selectedSkillId) && selectedDurationMinutes >= 5;
-        }
-
-        if (titleText != null) titleText.text = "Focus Setup";
-        if (statusText != null) statusText.text = hasSkills ? "Choose a skill and a duration." : "No skills available yet.";
-        if (closeButton != null) closeButton.gameObject.SetActive(true);
+        RefreshSkillButtons(skills);
+        RefreshDurationButtons();
+        ApplySetupState(skills.Count, skill, isNeglected);
     }
 
     private void RefreshActive()
@@ -294,8 +261,8 @@ public class FocusPanelUI : MonoBehaviour
         {
             int plannedMinutes = Mathf.Max(0, Mathf.RoundToInt(snapshot.configuredDurationSeconds / 60f));
             activeStatusText.text = snapshot.state == FocusSessionState.Paused
-                ? $"Paused · {plannedMinutes} min planned"
-                : $"Focus in progress · {plannedMinutes} min planned";
+                ? $"Paused - {plannedMinutes} min planned"
+                : $"Focus in progress - {plannedMinutes} min planned";
         }
 
         if (pauseResumeButtonText != null)
@@ -322,34 +289,24 @@ public class FocusPanelUI : MonoBehaviour
         if (statusText != null) statusText.text = "Session rewards were already applied.";
         if (closeButton != null) closeButton.gameObject.SetActive(true);
 
-        int plannedMinutes = Mathf.Max(0, Mathf.RoundToInt(result.plannedDurationSeconds / 60f));
-        int actualMinutes = Mathf.Max(0, Mathf.RoundToInt(result.actualDurationSeconds / 60f));
-        if (resultTitleText != null) resultTitleText.text = result.outcome == FocusSessionOutcome.CompletedEarly ? "Completed Early" : "Completed";
-        if (resultSubtitleText != null)
+        FocusResultViewData viewData = FocusResultPresenter.Build(result);
+        if (resultTitleText != null)
         {
-            resultSubtitleText.text = result.outcome == FocusSessionOutcome.CompletedEarly
-                ? $"You finished after {actualMinutes} min of {plannedMinutes} min."
-                : $"You completed the full {plannedMinutes} min session.";
+            resultTitleText.text = viewData.Title;
+            resultTitleText.color = viewData.TitleColor;
         }
-        if (resultSkillText != null)
-        {
-            resultSkillText.text = $"{(string.IsNullOrEmpty(result.skillIcon) ? string.Empty : result.skillIcon + " ")}{result.skillName}";
-        }
-        if (resultProgressText != null)
-        {
-            resultProgressText.text = $"Skill: {result.previousPercent:0.##}% -> {result.newPercent:0.##}%  ( +{result.deltaProgress:0.##}% )";
-        }
+        if (resultSubtitleText != null) resultSubtitleText.text = viewData.Subtitle;
+        if (resultSkillText != null) resultSkillText.text = viewData.Skill;
+        if (resultProgressText != null) resultProgressText.text = viewData.Progress;
         if (resultRewardText != null)
         {
-            resultRewardText.text = $"Coins: +{result.coinsReward}\nXP: +{result.xpReward}\nEnergy: +{result.energyReward:0.#}";
-            if (result.lowEnergyPenaltyApplied)
-            {
-                resultRewardText.text += "\nLow energy penalty applied";
-            }
+            resultRewardText.text = viewData.Reward;
+            resultRewardText.color = viewData.RewardColor;
         }
         if (resultPetText != null)
         {
-            resultPetText.text = $"Pet: {result.petReaction}\nMood: +{result.moodReward:0.#}\nEnergy: {result.energyBefore:0.#} -> {result.energyAfter:0.#}";
+            resultPetText.text = viewData.Pet;
+            resultPetText.color = viewData.PetColor;
         }
     }
 
@@ -385,28 +342,158 @@ public class FocusPanelUI : MonoBehaviour
         if (resultRoot != null) resultRoot.SetActive(state == FocusUiState.Result);
     }
 
-    private void RebuildSkillButtons(List<SkillEntry> skills)
+    private void RefreshSkillButtons(List<SkillEntry> skills)
     {
-        for (int i = 0; i < skillButtons.Count; i++)
-        {
-            if (skillButtons[i] == null) continue;
-            if (Application.isPlaying) Destroy(skillButtons[i].gameObject);
-            else DestroyImmediate(skillButtons[i].gameObject);
-        }
-        skillButtons.Clear();
+        visibleSkillButtonCount = skills != null ? skills.Count : 0;
+        EnsureSkillButtonPool(visibleSkillButtonCount);
 
+        for (int i = 0; i < visibleSkillButtonCount; i++)
+        {
+            SkillEntry skill = skills[i];
+            Button button = skillButtons[i];
+            if (button == null)
+            {
+                continue;
+            }
+
+            button.gameObject.SetActive(true);
+            button.name = $"SkillButton_{i}";
+
+            TextMeshProUGUI label = skillButtonLabels[i];
+            if (label != null)
+            {
+                label.text = GetSkillLabel(skill);
+            }
+
+            skillButtonSkillIds[i] = skill.id ?? string.Empty;
+            button.onClick.RemoveAllListeners();
+            string skillId = skill.id;
+            button.onClick.AddListener(() => OnSkillSelected(skillId));
+            FocusPanelViewUtility.SetButtonSelected(button, skill.id == selectedSkillId);
+        }
+
+        for (int i = visibleSkillButtonCount; i < skillButtons.Count; i++)
+        {
+            if (skillButtons[i] != null)
+            {
+                skillButtons[i].gameObject.SetActive(false);
+            }
+        }
+    }
+
+    private void EnsureSkillButtonPool(int count)
+    {
         if (skillListContent == null)
         {
             return;
         }
 
-        for (int i = 0; i < skills.Count; i++)
+        while (skillButtons.Count < count)
         {
-            SkillEntry skill = skills[i];
-            Button button = CreateButton(skillListContent, $"SkillButton_{i}", GetSkillLabel(skill), () => OnSkillSelected(skill.id));
+            int index = skillButtons.Count;
+            Button button = FocusPanelViewUtility.CreateButton(skillListContent, $"SkillButton_{index}", string.Empty, null);
             skillButtons.Add(button);
-            SetButtonSelected(button, skill.id == selectedSkillId);
+            skillButtonLabels.Add(button != null ? button.GetComponentInChildren<TextMeshProUGUI>(true) : null);
+            skillButtonSkillIds.Add(string.Empty);
         }
+    }
+
+    private void RefreshSkillButtonSelection()
+    {
+        for (int i = 0; i < visibleSkillButtonCount && i < skillButtons.Count; i++)
+        {
+            if (skillButtons[i] != null)
+            {
+                FocusPanelViewUtility.SetButtonSelected(skillButtons[i], skillButtonSkillIds[i] == selectedSkillId);
+            }
+        }
+    }
+
+    private void ApplySetupState(int skillCount, SkillEntry selectedSkill, bool isNeglected)
+    {
+        bool hasSkills = skillCount > 0;
+        if (setupEmptyText != null)
+        {
+            setupEmptyText.gameObject.SetActive(!hasSkills);
+            setupEmptyText.text = "Create at least one skill first";
+        }
+
+        if (addSkillButton != null)
+        {
+            addSkillButton.gameObject.SetActive(!hasSkills);
+        }
+
+        if (setupSummaryText != null)
+        {
+            if (selectedSkill == null)
+            {
+                setupSummaryText.text = "No valid skill selected.";
+            }
+            else if (isNeglected)
+            {
+                setupSummaryText.text = $"Care for your pet to unlock focus.\nSelected: {selectedSkill.name} - {selectedDurationMinutes} min";
+            }
+            else
+            {
+                setupSummaryText.text = $"Session: {selectedSkill.name} - {selectedDurationMinutes} min";
+            }
+        }
+
+        if (customDurationSlider != null)
+        {
+            int clampedDuration = Mathf.Clamp(selectedDurationMinutes, 5, 120);
+            if (Mathf.RoundToInt(customDurationSlider.value) != clampedDuration)
+            {
+                customDurationSlider.SetValueWithoutNotify(clampedDuration);
+            }
+        }
+
+        if (customDurationValueText != null)
+        {
+            customDurationValueText.text = $"{selectedDurationMinutes} min";
+        }
+
+        if (startButton != null)
+        {
+            startButton.interactable = hasSkills && !string.IsNullOrEmpty(selectedSkillId) && selectedDurationMinutes >= 5 && !isNeglected;
+        }
+
+        if (startButtonText != null)
+        {
+            startButtonText.text = isNeglected ? "Care First" : "Start Focus";
+        }
+
+        if (titleText != null)
+        {
+            titleText.text = "Focus Setup";
+        }
+
+        if (statusText != null)
+        {
+            if (!hasSkills)
+            {
+                statusText.text = "No skills available yet.";
+            }
+            else if (isNeglected)
+            {
+                statusText.text = "Pet neglected. Care first.";
+            }
+            else
+            {
+                statusText.text = "Choose a skill and a duration.";
+            }
+        }
+
+        if (closeButton != null)
+        {
+            closeButton.gameObject.SetActive(true);
+        }
+    }
+
+    private bool IsPetNeglected()
+    {
+        PetStatusSummary petSummary = gameManager != null ? gameManager.GetPetStatusSummary() : null;
+        return petSummary != null && petSummary.flowState == PetFlowState.Neglected;
     }
 
     private void RefreshDurationButtons()
@@ -414,7 +501,7 @@ public class FocusPanelUI : MonoBehaviour
         for (int i = 0; i < durationButtons.Count; i++)
         {
             if (durationButtons[i] == null) continue;
-            SetButtonSelected(durationButtons[i], durationPresets[i] == selectedDurationMinutes);
+            FocusPanelViewUtility.SetButtonSelected(durationButtons[i], durationPresets[i] == selectedDurationMinutes);
         }
     }
 
@@ -425,19 +512,22 @@ public class FocusPanelUI : MonoBehaviour
         {
             gameManager.SetSelectedFocusSkill(selectedSkillId);
         }
-        RefreshSetup();
+        RefreshSkillButtonSelection();
+        ApplySetupState(visibleSkillButtonCount, gameManager != null ? gameManager.GetSkillById(selectedSkillId) : null, IsPetNeglected());
     }
 
     private void OnDurationSelected(int minutes)
     {
         selectedDurationMinutes = Mathf.Clamp(minutes, 5, 120);
-        RefreshSetup();
+        RefreshDurationButtons();
+        ApplySetupState(visibleSkillButtonCount, gameManager != null ? gameManager.GetSkillById(selectedSkillId) : null, IsPetNeglected());
     }
 
     private void OnCustomDurationChanged(float rawValue)
     {
         selectedDurationMinutes = Mathf.Clamp(Mathf.RoundToInt(rawValue), 5, 120);
-        RefreshSetup();
+        RefreshDurationButtons();
+        ApplySetupState(visibleSkillButtonCount, gameManager != null ? gameManager.GetSkillById(selectedSkillId) : null, IsPetNeglected());
     }
 
     private void OnStartClicked()
@@ -554,9 +644,16 @@ public class FocusPanelUI : MonoBehaviour
             return "Unknown Skill";
         }
 
-        string percent = skill.percent > 0f && skill.percent < 0.01f ? "<0.01%" : $"{skill.percent:0.##}%";
+        SkillProgressionViewData view = gameManager != null ? gameManager.GetSkillProgressionView(skill.id) : null;
+        string progressLabel = "Lv.0 - 0% to Lv.1";
+        if (view != null)
+        {
+            progressLabel = view.isMaxed
+                ? $"Lv.{view.level} - Maxed"
+                : $"Lv.{view.level} - {view.progressToNextLevelPercent:0.#}% to Lv.{Mathf.Min(view.level + 1, SkillProgressionModel.MaxLevel)}";
+        }
         string icon = string.IsNullOrEmpty(skill.icon) ? string.Empty : skill.icon + " ";
-        return $"{icon}{skill.name} · {percent}";
+        return $"{icon}{skill.name} - {progressLabel}";
     }
 
     private string FormatTime(float seconds)
@@ -574,294 +671,52 @@ public class FocusPanelUI : MonoBehaviour
         }
 
         RectTransform canvasRect = transform as RectTransform;
-        panelRoot = CreatePanel(canvasRect, "FocusPanelRoot", new Color(0.06f, 0.08f, 0.12f, 0.86f), true);
-        GameObject window = CreatePanel(panelRoot.transform as RectTransform, "WindowRoot", new Color(0.13f, 0.16f, 0.24f, 0.98f), false);
-        RectTransform windowRect = window.GetComponent<RectTransform>();
-        windowRect.anchorMin = new Vector2(0.5f, 0.5f);
-        windowRect.anchorMax = new Vector2(0.5f, 0.5f);
-        windowRect.pivot = new Vector2(0.5f, 0.5f);
-        windowRect.sizeDelta = new Vector2(860f, 1320f);
-        windowRect.anchoredPosition = Vector2.zero;
+        FocusPanelLayoutRefs refs = FocusPanelLayoutBuilder.BuildLayout(
+            canvasRect,
+            ClosePanel,
+            OnAddSkillClicked,
+            OnStartClicked,
+            OnPauseResumeClicked,
+            OnFinishEarlyClicked,
+            OnCancelClicked,
+            OnDoneClicked,
+            OnKeepSessionClicked,
+            OnConfirmCancelClicked,
+            OnCustomDurationChanged,
+            durationPresets,
+            OnDurationSelected,
+            selectedDurationMinutes);
 
-        VerticalLayoutGroup windowLayout = window.AddComponent<VerticalLayoutGroup>();
-        windowLayout.padding = new RectOffset(28, 28, 28, 28);
-        windowLayout.spacing = 18f;
-        windowLayout.childAlignment = TextAnchor.UpperCenter;
-        windowLayout.childControlWidth = true;
-        windowLayout.childControlHeight = false;
-        windowLayout.childForceExpandWidth = true;
-        windowLayout.childForceExpandHeight = false;
+        panelRoot = refs.PanelRoot;
+        closeButton = refs.CloseButton;
+        titleText = refs.TitleText;
+        statusText = refs.StatusText;
+        setupRoot = refs.SetupRoot;
+        setupEmptyText = refs.SetupEmptyText;
+        addSkillButton = refs.AddSkillButton;
+        skillListContent = refs.SkillListContent;
+        setupSummaryText = refs.SetupSummaryText;
+        customDurationSlider = refs.CustomDurationSlider;
+        customDurationValueText = refs.CustomDurationValueText;
+        startButton = refs.StartButton;
+        startButtonText = refs.StartButtonText;
+        activeRoot = refs.ActiveRoot;
+        activeSkillText = refs.ActiveSkillText;
+        activeTimerText = refs.ActiveTimerText;
+        activeStatusText = refs.ActiveStatusText;
+        pauseResumeButton = refs.PauseResumeButton;
+        pauseResumeButtonText = refs.PauseResumeButtonText;
+        finishEarlyButton = refs.FinishEarlyButton;
+        cancelButton = refs.CancelButton;
+        resultRoot = refs.ResultRoot;
+        resultTitleText = refs.ResultTitleText;
+        resultSubtitleText = refs.ResultSubtitleText;
+        resultSkillText = refs.ResultSkillText;
+        resultProgressText = refs.ResultProgressText;
+        resultRewardText = refs.ResultRewardText;
+        resultPetText = refs.ResultPetText;
+        cancelConfirmRoot = refs.CancelConfirmRoot;
 
-        GameObject header = CreateObject("HeaderRow", window.transform as RectTransform);
-        HorizontalLayoutGroup headerLayout = header.AddComponent<HorizontalLayoutGroup>();
-        headerLayout.spacing = 12f;
-        headerLayout.childAlignment = TextAnchor.MiddleCenter;
-        headerLayout.childControlWidth = true;
-        headerLayout.childControlHeight = true;
-        headerLayout.childForceExpandWidth = false;
-        headerLayout.childForceExpandHeight = false;
-        LayoutElement headerElement = header.AddComponent<LayoutElement>();
-        headerElement.preferredHeight = 64f;
-
-        titleText = CreateText(header.transform as RectTransform, "TitleText", "Focus", 34f, FontStyles.Bold, TextAlignmentOptions.Left);
-        LayoutElement titleLayout = titleText.gameObject.AddComponent<LayoutElement>();
-        titleLayout.flexibleWidth = 1f;
-
-        closeButton = CreateButton(header.transform as RectTransform, "CloseButton", "Close", ClosePanel);
-        LayoutElement closeLayout = closeButton.gameObject.AddComponent<LayoutElement>();
-        closeLayout.preferredWidth = 160f;
-
-        statusText = CreateText(window.transform as RectTransform, "StatusText", string.Empty, 22f, FontStyles.Normal, TextAlignmentOptions.Center);
-        statusText.color = new Color(0.82f, 0.86f, 0.96f, 0.86f);
-
-        setupRoot = CreateColumn(window.transform as RectTransform, "SetupRoot");
-        activeRoot = CreateColumn(window.transform as RectTransform, "ActiveRoot");
-        resultRoot = CreateColumn(window.transform as RectTransform, "ResultRoot");
-
-        BuildSetupSection(setupRoot.transform as RectTransform);
-        BuildActiveSection(activeRoot.transform as RectTransform);
-        BuildResultSection(resultRoot.transform as RectTransform);
-        cancelConfirmRoot = BuildCancelConfirm(window.transform as RectTransform);
         HideCancelConfirm();
-    }
-
-    private void BuildSetupSection(RectTransform parent)
-    {
-        setupEmptyText = CreateText(parent, "SetupEmptyText", string.Empty, 24f, FontStyles.Bold, TextAlignmentOptions.Center);
-        setupEmptyText.color = new Color(0.96f, 0.77f, 0.49f, 1f);
-        addSkillButton = CreateButton(parent, "AddSkillButton", "Add Skill", OnAddSkillClicked);
-        addSkillButton.gameObject.SetActive(false);
-        CreateText(parent, "SkillLabel", "Choose a skill", 24f, FontStyles.Bold, TextAlignmentOptions.Left);
-        skillListContent = CreateScrollContent(parent, "SkillList");
-        CreateText(parent, "DurationLabel", "Choose a duration", 24f, FontStyles.Bold, TextAlignmentOptions.Left);
-
-        GameObject durationRow = CreateObject("DurationRow", parent);
-        HorizontalLayoutGroup rowLayout = durationRow.AddComponent<HorizontalLayoutGroup>();
-        rowLayout.spacing = 12f;
-        rowLayout.childAlignment = TextAnchor.MiddleCenter;
-        rowLayout.childControlWidth = true;
-        rowLayout.childControlHeight = true;
-        rowLayout.childForceExpandWidth = true;
-        rowLayout.childForceExpandHeight = true;
-        LayoutElement rowElement = durationRow.AddComponent<LayoutElement>();
-        rowElement.preferredHeight = 76f;
-
-        for (int i = 0; i < durationPresets.Length; i++)
-        {
-            int minutes = durationPresets[i];
-            durationButtons.Add(CreateButton(durationRow.transform as RectTransform, $"Duration_{minutes}", $"{minutes} min", () => OnDurationSelected(minutes)));
-        }
-
-        CreateText(parent, "CustomDurationLabel", "Custom duration", 22f, FontStyles.Bold, TextAlignmentOptions.Left);
-        GameObject customDurationRoot = CreatePanel(parent, "CustomDurationRoot", new Color(0.1f, 0.13f, 0.2f, 0.82f), false);
-        VerticalLayoutGroup customLayout = customDurationRoot.AddComponent<VerticalLayoutGroup>();
-        customLayout.padding = new RectOffset(18, 18, 18, 18);
-        customLayout.spacing = 8f;
-        customLayout.childAlignment = TextAnchor.MiddleCenter;
-        customLayout.childControlWidth = true;
-        customLayout.childControlHeight = true;
-        customLayout.childForceExpandWidth = true;
-        customLayout.childForceExpandHeight = false;
-
-        customDurationValueText = CreateText(customDurationRoot.transform as RectTransform, "CustomDurationValueText", "15 min", 22f, FontStyles.Normal, TextAlignmentOptions.Center);
-        GameObject sliderRoot = CreateObject("CustomDurationSliderRoot", customDurationRoot.transform as RectTransform);
-        LayoutElement sliderLayout = sliderRoot.AddComponent<LayoutElement>();
-        sliderLayout.preferredHeight = 42f;
-        Image sliderBackground = sliderRoot.AddComponent<Image>();
-        sliderBackground.color = new Color(1f, 1f, 1f, 0.08f);
-        customDurationSlider = sliderRoot.AddComponent<Slider>();
-        customDurationSlider.minValue = 5f;
-        customDurationSlider.maxValue = 120f;
-        customDurationSlider.wholeNumbers = true;
-        customDurationSlider.value = selectedDurationMinutes;
-        customDurationSlider.onValueChanged.AddListener(OnCustomDurationChanged);
-
-        setupSummaryText = CreateText(parent, "SetupSummaryText", string.Empty, 24f, FontStyles.Normal, TextAlignmentOptions.Center);
-        startButton = CreateButton(parent, "StartButton", "Start Focus", OnStartClicked);
-    }
-
-    private void BuildActiveSection(RectTransform parent)
-    {
-        activeSkillText = CreateText(parent, "ActiveSkillText", string.Empty, 30f, FontStyles.Bold, TextAlignmentOptions.Center);
-        activeTimerText = CreateText(parent, "ActiveTimerText", "00:00", 56f, FontStyles.Bold, TextAlignmentOptions.Center);
-        activeStatusText = CreateText(parent, "ActiveStatusText", string.Empty, 24f, FontStyles.Normal, TextAlignmentOptions.Center);
-        pauseResumeButton = CreateButton(parent, "PauseResumeButton", "Pause", OnPauseResumeClicked);
-        pauseResumeButtonText = pauseResumeButton.GetComponentInChildren<TextMeshProUGUI>();
-        finishEarlyButton = CreateButton(parent, "FinishEarlyButton", "Finish Early", OnFinishEarlyClicked);
-        cancelButton = CreateButton(parent, "CancelButton", "Cancel", OnCancelClicked);
-    }
-
-    private void BuildResultSection(RectTransform parent)
-    {
-        resultTitleText = CreateText(parent, "ResultTitleText", string.Empty, 32f, FontStyles.Bold, TextAlignmentOptions.Center);
-        resultSubtitleText = CreateText(parent, "ResultSubtitleText", string.Empty, 22f, FontStyles.Normal, TextAlignmentOptions.Center);
-        resultSkillText = CreateText(parent, "ResultSkillText", string.Empty, 28f, FontStyles.Bold, TextAlignmentOptions.Center);
-        resultProgressText = CreateText(parent, "ResultProgressText", string.Empty, 24f, FontStyles.Normal, TextAlignmentOptions.Center);
-        resultRewardText = CreateText(parent, "ResultRewardText", string.Empty, 24f, FontStyles.Normal, TextAlignmentOptions.Center);
-        resultPetText = CreateText(parent, "ResultPetText", string.Empty, 22f, FontStyles.Normal, TextAlignmentOptions.Center);
-        CreateButton(parent, "DoneButton", "Done", OnDoneClicked);
-    }
-
-    private GameObject BuildCancelConfirm(RectTransform parent)
-    {
-        GameObject overlay = CreatePanel(parent, "CancelConfirmRoot", new Color(0.02f, 0.03f, 0.06f, 0.78f), true);
-        GameObject box = CreatePanel(overlay.transform as RectTransform, "CancelConfirmBox", new Color(0.17f, 0.2f, 0.3f, 1f), false);
-        RectTransform boxRect = box.GetComponent<RectTransform>();
-        boxRect.anchorMin = new Vector2(0.5f, 0.5f);
-        boxRect.anchorMax = new Vector2(0.5f, 0.5f);
-        boxRect.pivot = new Vector2(0.5f, 0.5f);
-        boxRect.sizeDelta = new Vector2(620f, 280f);
-        boxRect.anchoredPosition = Vector2.zero;
-
-        VerticalLayoutGroup boxLayout = box.AddComponent<VerticalLayoutGroup>();
-        boxLayout.padding = new RectOffset(24, 24, 24, 24);
-        boxLayout.spacing = 18f;
-        boxLayout.childAlignment = TextAnchor.MiddleCenter;
-        boxLayout.childControlWidth = true;
-        boxLayout.childControlHeight = false;
-        boxLayout.childForceExpandWidth = true;
-        boxLayout.childForceExpandHeight = false;
-
-        CreateText(box.transform as RectTransform, "CancelTitle", "Cancel this focus session?", 28f, FontStyles.Bold, TextAlignmentOptions.Center);
-        CreateText(box.transform as RectTransform, "CancelBody", "Cancelling stops the session with no reward.", 22f, FontStyles.Normal, TextAlignmentOptions.Center);
-
-        GameObject buttonsRow = CreateObject("CancelButtonsRow", box.transform as RectTransform);
-        HorizontalLayoutGroup rowLayout = buttonsRow.AddComponent<HorizontalLayoutGroup>();
-        rowLayout.spacing = 12f;
-        rowLayout.childAlignment = TextAnchor.MiddleCenter;
-        rowLayout.childControlWidth = true;
-        rowLayout.childControlHeight = true;
-        rowLayout.childForceExpandWidth = true;
-        rowLayout.childForceExpandHeight = true;
-        CreateButton(buttonsRow.transform as RectTransform, "KeepButton", "Keep Session", OnKeepSessionClicked);
-        CreateButton(buttonsRow.transform as RectTransform, "ConfirmButton", "Confirm Cancel", OnConfirmCancelClicked);
-        return overlay;
-    }
-
-    private RectTransform CreateScrollContent(RectTransform parent, string name)
-    {
-        GameObject root = CreatePanel(parent, name, new Color(0.1f, 0.13f, 0.2f, 0.82f), false);
-        LayoutElement rootLayout = root.AddComponent<LayoutElement>();
-        rootLayout.preferredHeight = 420f;
-        ScrollRect scrollRect = root.AddComponent<ScrollRect>();
-        scrollRect.horizontal = false;
-
-        GameObject viewport = CreateObject("Viewport", root.transform as RectTransform);
-        RectTransform viewportRect = viewport.GetComponent<RectTransform>();
-        viewportRect.anchorMin = Vector2.zero;
-        viewportRect.anchorMax = Vector2.one;
-        viewportRect.offsetMin = new Vector2(10f, 10f);
-        viewportRect.offsetMax = new Vector2(-10f, -10f);
-        Image viewportImage = viewport.AddComponent<Image>();
-        viewportImage.color = new Color(1f, 1f, 1f, 0.02f);
-        Mask mask = viewport.AddComponent<Mask>();
-        mask.showMaskGraphic = false;
-
-        GameObject content = CreateObject("Content", viewportRect);
-        RectTransform contentRect = content.GetComponent<RectTransform>();
-        contentRect.anchorMin = new Vector2(0f, 1f);
-        contentRect.anchorMax = new Vector2(1f, 1f);
-        contentRect.pivot = new Vector2(0.5f, 1f);
-        contentRect.anchoredPosition = Vector2.zero;
-        VerticalLayoutGroup layout = content.AddComponent<VerticalLayoutGroup>();
-        layout.spacing = 8f;
-        layout.childAlignment = TextAnchor.UpperCenter;
-        layout.childControlWidth = true;
-        layout.childControlHeight = true;
-        layout.childForceExpandWidth = true;
-        layout.childForceExpandHeight = false;
-        ContentSizeFitter fitter = content.AddComponent<ContentSizeFitter>();
-        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-        scrollRect.viewport = viewportRect;
-        scrollRect.content = contentRect;
-        return contentRect;
-    }
-
-    private GameObject CreateColumn(RectTransform parent, string name)
-    {
-        GameObject column = CreateObject(name, parent);
-        VerticalLayoutGroup layout = column.AddComponent<VerticalLayoutGroup>();
-        layout.spacing = 16f;
-        layout.childAlignment = TextAnchor.UpperCenter;
-        layout.childControlWidth = true;
-        layout.childControlHeight = false;
-        layout.childForceExpandWidth = true;
-        layout.childForceExpandHeight = false;
-        LayoutElement element = column.AddComponent<LayoutElement>();
-        element.flexibleHeight = 1f;
-        return column;
-    }
-
-    private Button CreateButton(RectTransform parent, string name, string label, UnityEngine.Events.UnityAction onClick)
-    {
-        GameObject root = CreatePanel(parent, name, new Color(0.2f, 0.28f, 0.42f, 1f), false);
-        LayoutElement layout = root.AddComponent<LayoutElement>();
-        layout.preferredHeight = 64f;
-        Button button = root.AddComponent<Button>();
-        button.onClick.AddListener(onClick);
-        TextMeshProUGUI text = CreateText(root.transform as RectTransform, "Label", label, 22f, FontStyles.Bold, TextAlignmentOptions.Center);
-        RectTransform textRect = text.rectTransform;
-        textRect.anchorMin = Vector2.zero;
-        textRect.anchorMax = Vector2.one;
-        textRect.offsetMin = Vector2.zero;
-        textRect.offsetMax = Vector2.zero;
-        return button;
-    }
-
-    private TextMeshProUGUI CreateText(RectTransform parent, string name, string value, float size, FontStyles style, TextAlignmentOptions alignment)
-    {
-        GameObject root = CreateObject(name, parent);
-        TextMeshProUGUI text = root.AddComponent<TextMeshProUGUI>();
-        text.text = value;
-        text.fontSize = size;
-        text.fontStyle = style;
-        text.alignment = alignment;
-        text.color = new Color(0.96f, 0.98f, 1f, 1f);
-        text.textWrappingMode = TextWrappingModes.Normal;
-        return text;
-    }
-
-    private GameObject CreatePanel(RectTransform parent, string name, Color color, bool stretch)
-    {
-        GameObject root = CreateObject(name, parent);
-        Image image = root.AddComponent<Image>();
-        image.color = color;
-        if (stretch)
-        {
-            RectTransform rect = root.GetComponent<RectTransform>();
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-        }
-        return root;
-    }
-
-    private GameObject CreateObject(string name, RectTransform parent)
-    {
-        GameObject root = new GameObject(name, typeof(RectTransform));
-        RectTransform rect = root.GetComponent<RectTransform>();
-        rect.SetParent(parent, false);
-        rect.localScale = Vector3.one;
-        return root;
-    }
-
-    private void SetButtonSelected(Button button, bool selected)
-    {
-        if (button == null)
-        {
-            return;
-        }
-
-        Image image = button.GetComponent<Image>();
-        TextMeshProUGUI text = button.GetComponentInChildren<TextMeshProUGUI>();
-        if (image != null)
-        {
-            image.color = selected ? new Color(0.28f, 0.55f, 0.86f, 1f) : new Color(0.2f, 0.28f, 0.42f, 1f);
-        }
-        if (text != null)
-        {
-            text.color = selected ? Color.white : new Color(0.93f, 0.96f, 1f, 1f);
-        }
     }
 }
